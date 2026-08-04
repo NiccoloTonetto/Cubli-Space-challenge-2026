@@ -1,0 +1,5683 @@
+(export
+	(version "E")
+	(design
+		(source "/Users/niccolotonetto/Desktop/Cubli Research/Cubli - Space Challenge 2026/Cubli - Space Challenge 2026.kicad_sch")
+		(date "2026-07-30T23:08:07")
+		(tool "Eeschema 10.0.5")
+		(sheet
+			(number "1")
+			(name "/")
+			(tstamps "/")
+			(title_block
+				(title)
+				(company)
+				(rev)
+				(date)
+				(source "Cubli - Space Challenge 2026.kicad_sch")
+				(comment
+					(number "1")
+					(value "")
+				)
+				(comment
+					(number "2")
+					(value "")
+				)
+				(comment
+					(number "3")
+					(value "")
+				)
+				(comment
+					(number "4")
+					(value "")
+				)
+				(comment
+					(number "5")
+					(value "")
+				)
+				(comment
+					(number "6")
+					(value "")
+				)
+				(comment
+					(number "7")
+					(value "")
+				)
+				(comment
+					(number "8")
+					(value "")
+				)
+				(comment
+					(number "9")
+					(value "")
+				)
+			)
+		)
+	)
+	(components
+		(comp
+			(ref "BT1")
+			(value "Battery")
+			(description "Multiple-cell battery")
+			(fields
+				(field
+					(name "Sim.Device") "V")
+				(field
+					(name "Sim.Type") "DC")
+				(field
+					(name "Sim.Pins") "1=+ 2=-")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Multiple-cell battery")
+			)
+			(libsource
+				(lib "Device")
+				(part "Battery")
+				(description "Multiple-cell battery")
+			)
+			(property
+				(name "Sim.Device")
+				(value "V")
+			)
+			(property
+				(name "Sim.Type")
+				(value "DC")
+			)
+			(property
+				(name "Sim.Pins")
+				(value "1=+ 2=-")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "batt voltage-source cell")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "c9225895-efd6-48c2-98e4-a8f0f090b630")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C1")
+			(value "1000uF/50V")
+			(description "Polarized capacitor")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Polarized capacitor")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "23ae6be4-30c9-416a-9625-c2f756cd0359")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C2")
+			(value "100nF/50V")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "ca357bc9-4d5e-47d6-9265-123788789508")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C3")
+			(value "100uF/16V")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "6fd3d3a7-337e-4263-bc94-14a6742934f1")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C5")
+			(value "100nF")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "2b2be019-f00d-4e89-81cd-05703f6d3fc6")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C6")
+			(value "100nF")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "84077334-c573-4483-b1a8-e0676d2bc1f1")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C7")
+			(value "100nF")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "5ec05f3e-9e49-4a7e-aa12-30010ddfb258")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C10")
+			(value "4.7nF")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "f246cd31-d09b-4e45-b542-ac30b7f71f71")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C13")
+			(value "100uF")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "879e24aa-2ccf-4863-8b13-84a711ab15c6")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C14")
+			(value "100uF")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "05f0439d-df29-4878-b233-ceae3ea86f0c")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "C15")
+			(value "100uF")
+			(description "Ceramic")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Ceramic")
+			)
+			(libsource
+				(lib "Device")
+				(part "C_Small")
+				(description "Unpolarized capacitor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "capacitor cap")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "C_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "f993a930-e4d6-4b72-a7db-8e45de1197a8")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "D1")
+			(value "D_Schottky")
+			(description "Schottky diode")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Schottky diode")
+			)
+			(libsource
+				(lib "Device")
+				(part "D_Schottky")
+				(description "Schottky diode")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "diode Schottky")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "TO-???* *_Diode_* *SingleDiode* D_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "6bdfb3ce-c4f9-49e0-a9a7-478cfda1b067")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "DRV1")
+			(value "~")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(libsource
+				(lib "")
+				(part "Moteus_n1_module_1")
+				(description "")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "457ff644-4ae7-432a-beeb-6b4598dc9f63")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "9")
+						)
+						(pin
+							(num "10")
+						)
+						(pin
+							(num "11")
+						)
+						(pin
+							(num "15")
+						)
+						(pin
+							(num "14")
+						)
+						(pin
+							(num "13")
+						)
+						(pin
+							(num "12")
+						)
+						(pin
+							(num "8")
+						)
+						(pin
+							(num "7")
+						)
+						(pin
+							(num "6")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "DRV2")
+			(value "~")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(libsource
+				(lib "")
+				(part "Moteus_n1_module_2")
+				(description "")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "9bc29baa-56c5-4390-9cf0-04f91413c317")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "9")
+						)
+						(pin
+							(num "10")
+						)
+						(pin
+							(num "11")
+						)
+						(pin
+							(num "15")
+						)
+						(pin
+							(num "14")
+						)
+						(pin
+							(num "13")
+						)
+						(pin
+							(num "12")
+						)
+						(pin
+							(num "8")
+						)
+						(pin
+							(num "7")
+						)
+						(pin
+							(num "6")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "DRV3")
+			(value "~")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(libsource
+				(lib "Cubli_parts")
+				(part "Moteus_n1_module")
+				(description "")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "041f6399-a4ae-4d09-8824-0fd14d17e0f8")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "9")
+						)
+						(pin
+							(num "10")
+						)
+						(pin
+							(num "11")
+						)
+						(pin
+							(num "15")
+						)
+						(pin
+							(num "14")
+						)
+						(pin
+							(num "13")
+						)
+						(pin
+							(num "12")
+						)
+						(pin
+							(num "8")
+						)
+						(pin
+							(num "7")
+						)
+						(pin
+							(num "6")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "F1")
+			(value "30A")
+			(description "Fuse")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Fuse")
+			)
+			(libsource
+				(lib "Device")
+				(part "Fuse")
+				(description "Fuse")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "fuse")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "*Fuse*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "d10a5204-2322-4f25-9f13-38d0575e2d3f")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "J1")
+			(value "MA600_encoder - GH7 Connector")
+			(description "Fixed GH6→GH7 cable, ships with MA600 breakout — not user-wired")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Fixed GH6→GH7 cable, ships with MA600 breakout — not user-wired")
+			)
+			(libsource
+				(lib "Connector")
+				(part "Conn_01x07_Pin")
+				(description "Generic connector, single row, 01x07, script generated")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "connector")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "Connector*:*_1x??_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "4a9e6e0d-e0c7-4fa5-a7f2-8ba10ad580c4")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "6")
+						)
+						(pin
+							(num "7")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "J2")
+			(value "MA600_encoder - GH7 Connector")
+			(description "Fixed GH6→GH7 cable, ships with MA600 breakout — not user-wired")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Fixed GH6→GH7 cable, ships with MA600 breakout — not user-wired")
+			)
+			(libsource
+				(lib "Connector")
+				(part "Conn_01x07_Pin")
+				(description "Generic connector, single row, 01x07, script generated")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "connector")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "Connector*:*_1x??_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "d7e524be-ae95-415d-8dca-67d1c45ee869")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "6")
+						)
+						(pin
+							(num "7")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "J3")
+			(value "MA600_encoder - GH7 Connector")
+			(description "Fixed GH6→GH7 cable, ships with MA600 breakout — not user-wired")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Fixed GH6→GH7 cable, ships with MA600 breakout — not user-wired")
+			)
+			(libsource
+				(lib "Connector")
+				(part "Conn_01x07_Pin")
+				(description "Generic connector, single row, 01x07, script generated")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "connector")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "Connector*:*_1x??_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "1a4073d5-4209-41f1-a007-7b5d2500635a")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "6")
+						)
+						(pin
+							(num "7")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "J5")
+			(value "TMotor")
+			(description "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			)
+			(libsource
+				(lib "Connector_Generic")
+				(part "Conn_01x03")
+				(description "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "connector")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "Connector*:*_1x??_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "777b256e-f8b1-4450-ba60-bc61bfaf2f44")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "J6")
+			(value "TMotor")
+			(description "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			)
+			(libsource
+				(lib "Connector_Generic")
+				(part "Conn_01x03")
+				(description "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "connector")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "Connector*:*_1x??_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "947f05a9-4bcf-445c-807d-568854eb8d26")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "J7")
+			(value "TMotor")
+			(description "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			)
+			(libsource
+				(lib "Connector_Generic")
+				(part "Conn_01x03")
+				(description "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "connector")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "Connector*:*_1x??_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "dc291b15-7389-4b46-be16-8798fcb4c1fc")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "R1")
+			(value "60.4")
+			(description "Resistor, small symbol")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Resistor, small symbol")
+			)
+			(libsource
+				(lib "Device")
+				(part "R_Small")
+				(description "Resistor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "R resistor")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "R_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "b6b7041f-9378-4ddb-bfe1-0a0ede278668")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "R2")
+			(value "60.4")
+			(description "Resistor, small symbol")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Resistor, small symbol")
+			)
+			(libsource
+				(lib "Device")
+				(part "R_Small")
+				(description "Resistor, small symbol")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "R resistor")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "R_*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "c9f59349-8964-4914-b133-232a204dd3dc")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "Servo_MG92B1")
+			(value "~")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(libsource
+				(lib "Cubli_parts")
+				(part "Servo_MG92B")
+				(description "")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "2396f0a5-3978-4933-9c4c-9bffa854160b")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "Servo_MG92B2")
+			(value "~")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(libsource
+				(lib "Cubli_parts")
+				(part "Servo_MG92B")
+				(description "")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "20453a99-fcc6-4665-a60e-936c19735fde")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "Servo_MG92B3")
+			(value "~")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(libsource
+				(lib "Cubli_parts")
+				(part "Servo_MG92B")
+				(description "")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "1b125278-0bd9-4fd6-bc2e-f9a633418c8e")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "SW1")
+			(value "SW_SPST")
+			(description "Single Pole Single Throw (SPST) switch")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Single Pole Single Throw (SPST) switch")
+			)
+			(libsource
+				(lib "Switch")
+				(part "SW_SPST")
+				(description "Single Pole Single Throw (SPST) switch")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "switch lever")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "83b73477-2bfe-40fa-a5a8-40ff24bc369c")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "U1")
+			(value "TCAN330G")
+			(datasheet "http://www.ti.com/lit/ds/symlink/tcan337.pdf")
+			(description "High-Speed CAN Transceiver with CAN FD, 5Mbps, 3.3V supply, silent mode, shutdown mode, SOT-23-8/SOIC-8")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet") "http://www.ti.com/lit/ds/symlink/tcan337.pdf")
+				(field
+					(name "Description") "High-Speed CAN Transceiver with CAN FD, 5Mbps, 3.3V supply, silent mode, shutdown mode, SOT-23-8/SOIC-8")
+			)
+			(libsource
+				(lib "Interface_CAN_LIN")
+				(part "TCAN330G")
+				(description "High-Speed CAN Transceiver with CAN FD, 5Mbps, 3.3V supply, silent mode, shutdown mode, SOT-23-8/SOIC-8")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(property
+				(name "ki_keywords")
+				(value "High-Speed CAN Transceiver")
+			)
+			(property
+				(name "ki_fp_filters")
+				(value "*TSOT?23* *SOIC*3.9x4.9mm*P1.27mm*")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "b892a5f8-df8f-4cd5-b8df-9381e186710c")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "8")
+						)
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "7")
+						)
+						(pin
+							(num "6")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "U2")
+			(value "XIAO-ESP32-C6-SMD")
+			(footprint "Seeed_Studio_XIAO_Series:XIAO-ESP32-C6-SMD")
+			(fields
+				(field
+					(name "Footprint") "Seeed_Studio_XIAO_Series:XIAO-ESP32-C6-SMD")
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(libsource
+				(lib "Seeed_Studio_XIAO_Series")
+				(part "XIAO-ESP32-C6-SMD")
+				(description "")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "131d4dc6-5c5c-4586-adae-abc2c25193c4")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "6")
+						)
+						(pin
+							(num "7")
+						)
+						(pin
+							(num "15")
+						)
+						(pin
+							(num "16")
+						)
+						(pin
+							(num "17")
+						)
+						(pin
+							(num "18")
+						)
+						(pin
+							(num "23")
+						)
+						(pin
+							(num "19")
+						)
+						(pin
+							(num "24")
+						)
+						(pin
+							(num "20")
+						)
+						(pin
+							(num "21")
+						)
+						(pin
+							(num "22")
+						)
+						(pin
+							(num "14")
+						)
+						(pin
+							(num "13")
+						)
+						(pin
+							(num "12")
+						)
+						(pin
+							(num "11")
+						)
+						(pin
+							(num "10")
+						)
+						(pin
+							(num "9")
+						)
+						(pin
+							(num "8")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "U3")
+			(value "Teensy4.1")
+			(fields
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(libsource
+				(lib "teensy")
+				(part "Teensy4.1")
+				(description "")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "f0cbc11f-64fe-4ab2-ac88-91a03b7f12a1")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "6")
+						)
+						(pin
+							(num "7")
+						)
+						(pin
+							(num "8")
+						)
+						(pin
+							(num "9")
+						)
+						(pin
+							(num "10")
+						)
+						(pin
+							(num "11")
+						)
+						(pin
+							(num "12")
+						)
+						(pin
+							(num "13")
+						)
+						(pin
+							(num "14")
+						)
+						(pin
+							(num "15")
+						)
+						(pin
+							(num "16")
+						)
+						(pin
+							(num "17")
+						)
+						(pin
+							(num "18")
+						)
+						(pin
+							(num "19")
+						)
+						(pin
+							(num "20")
+						)
+						(pin
+							(num "21")
+						)
+						(pin
+							(num "22")
+						)
+						(pin
+							(num "23")
+						)
+						(pin
+							(num "24")
+						)
+						(pin
+							(num "66")
+						)
+						(pin
+							(num "67")
+						)
+						(pin
+							(num "55")
+						)
+						(pin
+							(num "56")
+						)
+						(pin
+							(num "57")
+						)
+						(pin
+							(num "58")
+						)
+						(pin
+							(num "59")
+						)
+						(pin
+							(num "50")
+						)
+						(pin
+							(num "51")
+						)
+						(pin
+							(num "52")
+						)
+						(pin
+							(num "53")
+						)
+						(pin
+							(num "54")
+						)
+						(pin
+							(num "49")
+						)
+						(pin
+							(num "48")
+						)
+						(pin
+							(num "47")
+						)
+						(pin
+							(num "46")
+						)
+						(pin
+							(num "45")
+						)
+						(pin
+							(num "44")
+						)
+						(pin
+							(num "43")
+						)
+						(pin
+							(num "42")
+						)
+						(pin
+							(num "41")
+						)
+						(pin
+							(num "40")
+						)
+						(pin
+							(num "39")
+						)
+						(pin
+							(num "38")
+						)
+						(pin
+							(num "37")
+						)
+						(pin
+							(num "36")
+						)
+						(pin
+							(num "35")
+						)
+						(pin
+							(num "34")
+						)
+						(pin
+							(num "33")
+						)
+						(pin
+							(num "32")
+						)
+						(pin
+							(num "31")
+						)
+						(pin
+							(num "30")
+						)
+						(pin
+							(num "29")
+						)
+						(pin
+							(num "28")
+						)
+						(pin
+							(num "27")
+						)
+						(pin
+							(num "26")
+						)
+						(pin
+							(num "25")
+						)
+						(pin
+							(num "65")
+						)
+						(pin
+							(num "64")
+						)
+						(pin
+							(num "63")
+						)
+						(pin
+							(num "62")
+						)
+						(pin
+							(num "61")
+						)
+						(pin
+							(num "60")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "U4")
+			(value "LM2596 - DCDC")
+			(footprint "LM2596:TO263-5")
+			(description "step-down voltage regulator capable of driving a 3A load with excellent line and load regulation")
+			(fields
+				(field
+					(name "MF") "Texas Instruments")
+				(field
+					(name "Package") "Package")
+				(field
+					(name "Price") "None")
+				(field
+					(name "SnapEDA_Link") "https://www.snapeda.com/parts/LM2596/Texas+Instruments/view-part/?ref=snap")
+				(field
+					(name "MP") "LM2596")
+				(field
+					(name "Availability") "Not in stock")
+				(field
+					(name "Check_prices") "https://www.snapeda.com/parts/LM2596/Texas+Instruments/view-part/?ref=eda")
+				(field
+					(name "Footprint") "LM2596:TO263-5")
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "step-down voltage regulator capable of driving a 3A load with excellent line and load regulation")
+			)
+			(libsource
+				(lib "LM2596")
+				(part "LM2596")
+				(description "step-down voltage regulator capable of driving a 3A load with excellent line and load regulation")
+			)
+			(property
+				(name "MF")
+				(value "Texas Instruments")
+			)
+			(property
+				(name "Package")
+				(value "Package")
+			)
+			(property
+				(name "Price")
+				(value "None")
+			)
+			(property
+				(name "SnapEDA_Link")
+				(value "https://www.snapeda.com/parts/LM2596/Texas+Instruments/view-part/?ref=snap")
+			)
+			(property
+				(name "MP")
+				(value "LM2596")
+			)
+			(property
+				(name "Availability")
+				(value "Not in stock")
+			)
+			(property
+				(name "Check_prices")
+				(value "https://www.snapeda.com/parts/LM2596/Texas+Instruments/view-part/?ref=eda")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "de467dc2-1626-4442-8fc4-d1a2c1997457")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "4")
+						)
+					)
+				)
+			)
+		)
+		(comp
+			(ref "U5")
+			(value "BMI270")
+			(footprint "BMI270:XDCR_BMI270")
+			(description "Accelerometer, Gyroscope, 6 Axis Sensor I2C, SPI Output")
+			(fields
+				(field
+					(name "PATREV") "1.0")
+				(field
+					(name "MF") "Bosch Sensortec")
+				(field
+					(name "MAXIMUM_PACKAGE_HEIGHT") "0.87mm")
+				(field
+					(name "Package") "LGA-14 Bosch Sensortec")
+				(field
+					(name "Price") "None")
+				(field
+					(name "Check_prices") "https://www.snapeda.com/parts/BMI270/Bosch/view-part/?ref=eda")
+				(field
+					(name "STANDARD") "Manufacturer Recommendations")
+				(field
+					(name "SnapEDA_Link") "https://www.snapeda.com/parts/BMI270/Bosch/view-part/?ref=snap")
+				(field
+					(name "MP") "BMI270")
+				(field
+					(name "Availability") "In Stock")
+				(field
+					(name "MANUFACTURER") "Bosch Sensortec")
+				(field
+					(name "Footprint") "BMI270:XDCR_BMI270")
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Accelerometer, Gyroscope, 6 Axis Sensor I2C, SPI Output")
+			)
+			(libsource
+				(lib "BMI270")
+				(part "BMI270")
+				(description "Accelerometer, Gyroscope, 6 Axis Sensor I2C, SPI Output")
+			)
+			(property
+				(name "PATREV")
+				(value "1.0")
+			)
+			(property
+				(name "MF")
+				(value "Bosch Sensortec")
+			)
+			(property
+				(name "MAXIMUM_PACKAGE_HEIGHT")
+				(value "0.87mm")
+			)
+			(property
+				(name "Package")
+				(value "LGA-14 Bosch Sensortec")
+			)
+			(property
+				(name "Price")
+				(value "None")
+			)
+			(property
+				(name "Check_prices")
+				(value "https://www.snapeda.com/parts/BMI270/Bosch/view-part/?ref=eda")
+			)
+			(property
+				(name "STANDARD")
+				(value "Manufacturer Recommendations")
+			)
+			(property
+				(name "SnapEDA_Link")
+				(value "https://www.snapeda.com/parts/BMI270/Bosch/view-part/?ref=snap")
+			)
+			(property
+				(name "MP")
+				(value "BMI270")
+			)
+			(property
+				(name "Availability")
+				(value "In Stock")
+			)
+			(property
+				(name "MANUFACTURER")
+				(value "Bosch Sensortec")
+			)
+			(property
+				(name "Sheetname")
+				(value "Principale")
+			)
+			(property
+				(name "Sheetfile")
+				(value "Cubli - Space Challenge 2026.kicad_sch")
+			)
+			(sheetpath
+				(names "/")
+				(tstamps "/")
+			)
+			(tstamps "082588ca-31fe-48a7-b69d-b282794fb633")
+			(units
+				(unit
+					(name "A")
+					(pins
+						(pin
+							(num "8")
+						)
+						(pin
+							(num "5")
+						)
+						(pin
+							(num "4")
+						)
+						(pin
+							(num "9")
+						)
+						(pin
+							(num "6*2")
+						)
+						(pin
+							(num "13")
+						)
+						(pin
+							(num "14")
+						)
+						(pin
+							(num "1")
+						)
+						(pin
+							(num "12")
+						)
+						(pin
+							(num "3")
+						)
+						(pin
+							(num "2")
+						)
+						(pin
+							(num "11")
+						)
+						(pin
+							(num "10")
+						)
+					)
+				)
+			)
+		)
+	)
+	(groups)
+	(variants)
+	(libparts
+		(libpart
+			(lib "")
+			(part "Moteus_n1_module_1")
+			(fields
+				(field
+					(name "Reference") "DRV1")
+				(field
+					(name "Value")
+				)
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "V+")
+					(type "power_in")
+				)
+				(pin
+					(num "2")
+					(name "GND_PWR")
+					(type "power_in")
+				)
+				(pin
+					(num "3")
+					(name "CANH")
+					(type "bidirectional")
+				)
+				(pin
+					(num "4")
+					(name "CANL")
+					(type "bidirectional")
+				)
+				(pin
+					(num "5")
+					(name "GND_CAN")
+					(type "passive")
+				)
+				(pin
+					(num "6")
+					(name "AUX2_GND")
+					(type "power_in")
+				)
+				(pin
+					(num "7")
+					(name "AUX2_3V")
+					(type "power_out")
+				)
+				(pin
+					(num "8")
+					(name "AUX2_5V")
+					(type "power_out")
+				)
+				(pin
+					(num "9")
+					(name "PHASE_A")
+					(type "passive")
+				)
+				(pin
+					(num "10")
+					(name "PHASE_B")
+					(type "passive")
+				)
+				(pin
+					(num "11")
+					(name "PHASE_C")
+					(type "passive")
+				)
+				(pin
+					(num "12")
+					(name "AUX2_A")
+					(type "bidirectional")
+				)
+				(pin
+					(num "13")
+					(name "AUX2_B")
+					(type "bidirectional")
+				)
+				(pin
+					(num "14")
+					(name "AUX2_C")
+					(type "bidirectional")
+				)
+				(pin
+					(num "15")
+					(name "AUX2_D")
+					(type "bidirectional")
+				)
+			)
+		)
+		(libpart
+			(lib "BMI270")
+			(part "BMI270")
+			(description "Accelerometer, Gyroscope, 6 Axis Sensor I2C, SPI Output")
+			(fields
+				(field
+					(name "Reference") "U5")
+				(field
+					(name "Value") "BMI270")
+				(field
+					(name "Footprint") "BMI270:XDCR_BMI270")
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Accelerometer, Gyroscope, 6 Axis Sensor I2C, SPI Output")
+				(field
+					(name "PATREV") "1.0")
+				(field
+					(name "MF") "Bosch Sensortec")
+				(field
+					(name "MAXIMUM_PACKAGE_HEIGHT") "0.87mm")
+				(field
+					(name "Package") "LGA-14 Bosch Sensortec")
+				(field
+					(name "Price") "None")
+				(field
+					(name "Check_prices") "https://www.snapeda.com/parts/BMI270/Bosch/view-part/?ref=eda")
+				(field
+					(name "STANDARD") "Manufacturer Recommendations")
+				(field
+					(name "SnapEDA_Link") "https://www.snapeda.com/parts/BMI270/Bosch/view-part/?ref=snap")
+				(field
+					(name "MP") "BMI270")
+				(field
+					(name "Availability") "In Stock")
+				(field
+					(name "MANUFACTURER") "Bosch Sensortec")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "ADR/POCI")
+					(type "bidirectional")
+				)
+				(pin
+					(num "2")
+					(name "ASDX")
+					(type "bidirectional")
+				)
+				(pin
+					(num "3")
+					(name "ASCX")
+					(type "bidirectional")
+				)
+				(pin
+					(num "4")
+					(name "INT1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "5")
+					(name "VDDIO")
+					(type "power_in")
+				)
+				(pin
+					(num "6*2")
+					(name "GND")
+					(type "power_in")
+				)
+				(pin
+					(num "8")
+					(name "VDD")
+					(type "power_in")
+				)
+				(pin
+					(num "9")
+					(name "INT2")
+					(type "bidirectional")
+				)
+				(pin
+					(num "10")
+					(name "OCS")
+					(type "input")
+				)
+				(pin
+					(num "11")
+					(name "OSDO")
+					(type "output")
+				)
+				(pin
+					(num "12")
+					(name "CS")
+					(type "input")
+				)
+				(pin
+					(num "13")
+					(name "SCL/SCK")
+					(type "input")
+				)
+				(pin
+					(num "14")
+					(name "SDA/PICO")
+					(type "bidirectional")
+				)
+			)
+		)
+		(libpart
+			(lib "Connector")
+			(part "Conn_01x07_Pin")
+			(description "Generic connector, single row, 01x07, script generated")
+			(footprints
+				(fp "Connector*:*_1x??_*")
+			)
+			(fields
+				(field
+					(name "Reference") "J")
+				(field
+					(name "Value") "Conn_01x07_Pin")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Generic connector, single row, 01x07, script generated")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "Pin_1")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "Pin_2")
+					(type "passive")
+				)
+				(pin
+					(num "3")
+					(name "Pin_3")
+					(type "passive")
+				)
+				(pin
+					(num "4")
+					(name "Pin_4")
+					(type "passive")
+				)
+				(pin
+					(num "5")
+					(name "Pin_5")
+					(type "passive")
+				)
+				(pin
+					(num "6")
+					(name "Pin_6")
+					(type "passive")
+				)
+				(pin
+					(num "7")
+					(name "Pin_7")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "Connector_Generic")
+			(part "Conn_01x03")
+			(description "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			(footprints
+				(fp "Connector*:*_1x??_*")
+			)
+			(fields
+				(field
+					(name "Reference") "J")
+				(field
+					(name "Value") "Conn_01x03")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Generic connector, single row, 01x03, script generated (kicad-library-utils/schlib/autogen/connector/)")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "Pin_1")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "Pin_2")
+					(type "passive")
+				)
+				(pin
+					(num "3")
+					(name "Pin_3")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "Cubli_parts")
+			(part "Moteus_n1_module_2")
+			(fields
+				(field
+					(name "Reference") "DRV2")
+				(field
+					(name "Value")
+				)
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "V+")
+					(type "power_in")
+				)
+				(pin
+					(num "2")
+					(name "GND_PWR")
+					(type "power_in")
+				)
+				(pin
+					(num "3")
+					(name "CANH")
+					(type "bidirectional")
+				)
+				(pin
+					(num "4")
+					(name "CANL")
+					(type "bidirectional")
+				)
+				(pin
+					(num "5")
+					(name "GND_CAN")
+					(type "passive")
+				)
+				(pin
+					(num "6")
+					(name "AUX2_GND")
+					(type "passive")
+				)
+				(pin
+					(num "7")
+					(name "AUX2_3V")
+					(type "power_out")
+				)
+				(pin
+					(num "8")
+					(name "AUX2_5V")
+					(type "power_out")
+				)
+				(pin
+					(num "9")
+					(name "PHASE_A")
+					(type "passive")
+				)
+				(pin
+					(num "10")
+					(name "PHASE_B")
+					(type "passive")
+				)
+				(pin
+					(num "11")
+					(name "PHASE_C")
+					(type "passive")
+				)
+				(pin
+					(num "12")
+					(name "AUX2_A")
+					(type "bidirectional")
+				)
+				(pin
+					(num "13")
+					(name "AUX2_B")
+					(type "bidirectional")
+				)
+				(pin
+					(num "14")
+					(name "AUX2_C")
+					(type "bidirectional")
+				)
+				(pin
+					(num "15")
+					(name "AUX2_D")
+					(type "bidirectional")
+				)
+			)
+		)
+		(libpart
+			(lib "Cubli_parts")
+			(part "Servo_MG92B")
+			(fields
+				(field
+					(name "Reference") "Servo_MG92B1")
+				(field
+					(name "Value")
+				)
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "PWM")
+					(type "input")
+				)
+				(pin
+					(num "2")
+					(name "V+")
+					(type "power_in")
+				)
+				(pin
+					(num "3")
+					(name "GND")
+					(type "power_in")
+				)
+			)
+		)
+		(libpart
+			(lib "Device")
+			(part "Battery")
+			(description "Multiple-cell battery")
+			(fields
+				(field
+					(name "Reference") "BT")
+				(field
+					(name "Value") "Battery")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Multiple-cell battery")
+				(field
+					(name "Sim.Device") "V")
+				(field
+					(name "Sim.Type") "DC")
+				(field
+					(name "Sim.Pins") "1=+ 2=-")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "+")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "-")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "Device")
+			(part "C_Small")
+			(description "Unpolarized capacitor, small symbol")
+			(footprints
+				(fp "C_*")
+			)
+			(fields
+				(field
+					(name "Reference") "C")
+				(field
+					(name "Value") "C_Small")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Unpolarized capacitor, small symbol")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "Device")
+			(part "D_Schottky")
+			(description "Schottky diode")
+			(footprints
+				(fp "TO-???*")
+				(fp "*_Diode_*")
+				(fp "*SingleDiode*")
+				(fp "D_*")
+			)
+			(fields
+				(field
+					(name "Reference") "D")
+				(field
+					(name "Value") "D_Schottky")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Schottky diode")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "K")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "A")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "Device")
+			(part "Fuse")
+			(description "Fuse")
+			(footprints
+				(fp "*Fuse*")
+			)
+			(fields
+				(field
+					(name "Reference") "F")
+				(field
+					(name "Value") "Fuse")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Fuse")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "Device")
+			(part "R_Small")
+			(description "Resistor, small symbol")
+			(footprints
+				(fp "R_*")
+			)
+			(fields
+				(field
+					(name "Reference") "R")
+				(field
+					(name "Value") "R_Small")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Resistor, small symbol")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "Interface_CAN_LIN")
+			(part "TCAN330G")
+			(description "High-Speed CAN Transceiver with CAN FD, 5Mbps, 3.3V supply, silent mode, shutdown mode, SOT-23-8/SOIC-8")
+			(docs "http://www.ti.com/lit/ds/symlink/tcan337.pdf")
+			(footprints
+				(fp "*TSOT?23*")
+				(fp "*SOIC*3.9x4.9mm*P1.27mm*")
+			)
+			(fields
+				(field
+					(name "Reference") "U")
+				(field
+					(name "Value") "TCAN330G")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet") "http://www.ti.com/lit/ds/symlink/tcan337.pdf")
+				(field
+					(name "Description") "High-Speed CAN Transceiver with CAN FD, 5Mbps, 3.3V supply, silent mode, shutdown mode, SOT-23-8/SOIC-8")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "TXD")
+					(type "input")
+				)
+				(pin
+					(num "2")
+					(name "GND")
+					(type "power_in")
+				)
+				(pin
+					(num "3")
+					(name "VCC")
+					(type "power_in")
+				)
+				(pin
+					(num "4")
+					(name "RXD")
+					(type "tri_state")
+				)
+				(pin
+					(num "5")
+					(name "SHDN")
+					(type "input")
+				)
+				(pin
+					(num "6")
+					(name "CANL")
+					(type "bidirectional")
+				)
+				(pin
+					(num "7")
+					(name "CANH")
+					(type "bidirectional")
+				)
+				(pin
+					(num "8")
+					(name "S")
+					(type "input")
+				)
+			)
+		)
+		(libpart
+			(lib "LM2596")
+			(part "LM2596")
+			(description "step-down voltage regulator capable of driving a 3A load with excellent line and load regulation")
+			(fields
+				(field
+					(name "Reference") "U")
+				(field
+					(name "Value") "LM2596")
+				(field
+					(name "Footprint") "LM2596:TO263-5")
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "step-down voltage regulator capable of driving a 3A load with excellent line and load regulation")
+				(field
+					(name "MF") "Texas Instruments")
+				(field
+					(name "Package") "Package")
+				(field
+					(name "Price") "None")
+				(field
+					(name "SnapEDA_Link") "https://www.snapeda.com/parts/LM2596/Texas+Instruments/view-part/?ref=snap")
+				(field
+					(name "MP") "LM2596")
+				(field
+					(name "Availability") "Not in stock")
+				(field
+					(name "Check_prices") "https://www.snapeda.com/parts/LM2596/Texas+Instruments/view-part/?ref=eda")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "IN+")
+					(type "power_in")
+				)
+				(pin
+					(num "2")
+					(name "OUT+")
+					(type "power_out")
+				)
+				(pin
+					(num "3")
+					(name "IN-")
+					(type "power_in")
+				)
+				(pin
+					(num "4")
+					(name "OUT-")
+					(type "power_out")
+				)
+			)
+		)
+		(libpart
+			(lib "Seeed_Studio_XIAO_Series")
+			(part "XIAO-ESP32-C6-SMD")
+			(fields
+				(field
+					(name "Reference") "U2")
+				(field
+					(name "Value") "XIAO-ESP32-C6-SMD")
+				(field
+					(name "Footprint") "Seeed_Studio_XIAO_Series:XIAO-ESP32-C6-SMD")
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "D0")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "D1")
+					(type "passive")
+				)
+				(pin
+					(num "3")
+					(name "D2")
+					(type "passive")
+				)
+				(pin
+					(num "4")
+					(name "D3")
+					(type "passive")
+				)
+				(pin
+					(num "5")
+					(name "D4")
+					(type "passive")
+				)
+				(pin
+					(num "6")
+					(name "D5")
+					(type "passive")
+				)
+				(pin
+					(num "7")
+					(name "D6")
+					(type "passive")
+				)
+				(pin
+					(num "8")
+					(name "D7")
+					(type "passive")
+				)
+				(pin
+					(num "9")
+					(name "D8")
+					(type "passive")
+				)
+				(pin
+					(num "10")
+					(name "D9")
+					(type "passive")
+				)
+				(pin
+					(num "11")
+					(name "D10")
+					(type "passive")
+				)
+				(pin
+					(num "12")
+					(name "3V3_OUT")
+					(type "passive")
+				)
+				(pin
+					(num "13")
+					(name "GND")
+					(type "passive")
+				)
+				(pin
+					(num "14")
+					(name "VBUS")
+					(type "passive")
+				)
+				(pin
+					(num "15")
+					(name "MTDI")
+					(type "passive")
+				)
+				(pin
+					(num "16")
+					(name "MTDO")
+					(type "passive")
+				)
+				(pin
+					(num "17")
+					(name "EN")
+					(type "passive")
+				)
+				(pin
+					(num "18")
+					(name "GND")
+					(type "passive")
+				)
+				(pin
+					(num "19")
+					(name "MTMS")
+					(type "passive")
+				)
+				(pin
+					(num "20")
+					(name "MTCK")
+					(type "passive")
+				)
+				(pin
+					(num "21")
+					(name "BOOT")
+					(type "passive")
+				)
+				(pin
+					(num "22")
+					(name "3V3_OUT")
+					(type "passive")
+				)
+				(pin
+					(num "23")
+					(name "VBAT")
+					(type "passive")
+				)
+				(pin
+					(num "24")
+					(name "GND")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "Switch")
+			(part "SW_SPST")
+			(description "Single Pole Single Throw (SPST) switch")
+			(fields
+				(field
+					(name "Reference") "SW")
+				(field
+					(name "Value") "SW_SPST")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description") "Single Pole Single Throw (SPST) switch")
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "A")
+					(type "passive")
+				)
+				(pin
+					(num "2")
+					(name "B")
+					(type "passive")
+				)
+			)
+		)
+		(libpart
+			(lib "teensy")
+			(part "Teensy4.1")
+			(fields
+				(field
+					(name "Reference") "U3")
+				(field
+					(name "Value") "Teensy4.1")
+				(field
+					(name "Footprint")
+				)
+				(field
+					(name "Datasheet")
+				)
+				(field
+					(name "Description")
+				)
+			)
+			(pins
+				(pin
+					(num "1")
+					(name "GND")
+					(type "power_in")
+				)
+				(pin
+					(num "2")
+					(name "0_RX1_CRX2_CS1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "3")
+					(name "1_TX1_CTX2_MISO1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "4")
+					(name "2_OUT2")
+					(type "bidirectional")
+				)
+				(pin
+					(num "5")
+					(name "3_LRCLK2")
+					(type "bidirectional")
+				)
+				(pin
+					(num "6")
+					(name "4_BCLK2")
+					(type "bidirectional")
+				)
+				(pin
+					(num "7")
+					(name "5_IN2")
+					(type "bidirectional")
+				)
+				(pin
+					(num "8")
+					(name "6_OUT1D")
+					(type "bidirectional")
+				)
+				(pin
+					(num "9")
+					(name "7_RX2_OUT1A")
+					(type "bidirectional")
+				)
+				(pin
+					(num "10")
+					(name "8_TX2_IN1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "11")
+					(name "9_OUT1C")
+					(type "bidirectional")
+				)
+				(pin
+					(num "12")
+					(name "10_CS_MQSR")
+					(type "bidirectional")
+				)
+				(pin
+					(num "13")
+					(name "11_MOSI_CTX1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "14")
+					(name "12_MISO_MQSL")
+					(type "bidirectional")
+				)
+				(pin
+					(num "15")
+					(name "3V3")
+					(type "power_in")
+				)
+				(pin
+					(num "16")
+					(name "24_A10_TX6_SCL2")
+					(type "bidirectional")
+				)
+				(pin
+					(num "17")
+					(name "25_A11_RX6_SDA2")
+					(type "bidirectional")
+				)
+				(pin
+					(num "18")
+					(name "26_A12_MOSI1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "19")
+					(name "27_A13_SCK1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "20")
+					(name "28_RX7")
+					(type "bidirectional")
+				)
+				(pin
+					(num "21")
+					(name "29_TX7")
+					(type "bidirectional")
+				)
+				(pin
+					(num "22")
+					(name "30_CRX3")
+					(type "bidirectional")
+				)
+				(pin
+					(num "23")
+					(name "31_CTX3")
+					(type "bidirectional")
+				)
+				(pin
+					(num "24")
+					(name "32_OUT1B")
+					(type "bidirectional")
+				)
+				(pin
+					(num "25")
+					(name "33_MCLK2")
+					(type "bidirectional")
+				)
+				(pin
+					(num "26")
+					(name "34_RX8")
+					(type "bidirectional")
+				)
+				(pin
+					(num "27")
+					(name "35_TX8")
+					(type "bidirectional")
+				)
+				(pin
+					(num "28")
+					(name "36_CS")
+					(type "bidirectional")
+				)
+				(pin
+					(num "29")
+					(name "37_CS")
+					(type "bidirectional")
+				)
+				(pin
+					(num "30")
+					(name "38_CS1_IN1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "31")
+					(name "39_MISO1_OUT1A")
+					(type "bidirectional")
+				)
+				(pin
+					(num "32")
+					(name "40_A16")
+					(type "bidirectional")
+				)
+				(pin
+					(num "33")
+					(name "41_A17")
+					(type "bidirectional")
+				)
+				(pin
+					(num "34")
+					(name "GND")
+					(type "power_in")
+				)
+				(pin
+					(num "35")
+					(name "13_SCK_LED")
+					(type "bidirectional")
+				)
+				(pin
+					(num "36")
+					(name "14_A0_TX3_SPDIF_OUT")
+					(type "bidirectional")
+				)
+				(pin
+					(num "37")
+					(name "15_A1_RX3_SPDIF_IN")
+					(type "bidirectional")
+				)
+				(pin
+					(num "38")
+					(name "16_A2_RX4_SCL1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "39")
+					(name "17_A3_TX4_SDA1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "40")
+					(name "18_A4_SDA")
+					(type "bidirectional")
+				)
+				(pin
+					(num "41")
+					(name "19_A5_SCL")
+					(type "bidirectional")
+				)
+				(pin
+					(num "42")
+					(name "20_A6_TX5_LRCLK1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "43")
+					(name "21_A7_RX5_BCLK1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "44")
+					(name "22_A8_CTX1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "45")
+					(name "23_A9_CRX1_MCLK1")
+					(type "bidirectional")
+				)
+				(pin
+					(num "46")
+					(name "3V3")
+					(type "power_out")
+				)
+				(pin
+					(num "47")
+					(name "GND")
+					(type "power_in")
+				)
+				(pin
+					(num "48")
+					(name "VIN")
+					(type "power_in")
+				)
+				(pin
+					(num "49")
+					(name "VUSB")
+					(type "power_out")
+				)
+				(pin
+					(num "50")
+					(name "VBAT")
+					(type "power_in")
+				)
+				(pin
+					(num "51")
+					(name "3V3")
+					(type "power_in")
+				)
+				(pin
+					(num "52")
+					(name "GND")
+					(type "input")
+				)
+				(pin
+					(num "53")
+					(name "PROGRAM")
+					(type "input")
+				)
+				(pin
+					(num "54")
+					(name "ON_OFF")
+					(type "input")
+				)
+				(pin
+					(num "55")
+					(name "5V")
+					(type "power_out")
+				)
+				(pin
+					(num "56")
+					(name "D-")
+					(type "bidirectional")
+				)
+				(pin
+					(num "57")
+					(name "D+")
+					(type "bidirectional")
+				)
+				(pin
+					(num "58")
+					(name "GND")
+					(type "power_in")
+				)
+				(pin
+					(num "59")
+					(name "GND")
+					(type "power_in")
+				)
+				(pin
+					(num "60")
+					(name "R+")
+					(type "bidirectional")
+				)
+				(pin
+					(num "61")
+					(name "LED")
+					(type "bidirectional")
+				)
+				(pin
+					(num "62")
+					(name "T-")
+					(type "bidirectional")
+				)
+				(pin
+					(num "63")
+					(name "T+")
+					(type "bidirectional")
+				)
+				(pin
+					(num "64")
+					(name "GND")
+					(type "power_in")
+				)
+				(pin
+					(num "65")
+					(name "R-")
+					(type "bidirectional")
+				)
+				(pin
+					(num "66")
+					(name "D-")
+					(type "bidirectional")
+				)
+				(pin
+					(num "67")
+					(name "D+")
+					(type "bidirectional")
+				)
+			)
+		)
+	)
+	(libraries
+		(library
+			(logical "BMI270")
+			(uri "/Users/niccolotonetto/Desktop/Cubli Research/Circuit Schematic/BMI270/BMI270.kicad_sym")
+		)
+		(library
+			(logical "Connector")
+			(uri "${KICAD10_SYMBOL_DIR}/Connector.kicad_sym")
+		)
+		(library
+			(logical "Connector_Generic")
+			(uri "${KICAD10_SYMBOL_DIR}/Connector_Generic.kicad_sym")
+		)
+		(library
+			(logical "Cubli_parts")
+			(uri "/Users/niccolotonetto/Desktop/Cubli Research/Circuit Schematic/Cubli_parts.kicad_sym")
+		)
+		(library
+			(logical "Device")
+			(uri "${KICAD10_SYMBOL_DIR}/Device.kicad_sym")
+		)
+		(library
+			(logical "Interface_CAN_LIN")
+			(uri "${KICAD10_SYMBOL_DIR}/Interface_CAN_LIN.kicad_sym")
+		)
+		(library
+			(logical "LM2596")
+			(uri "/Users/niccolotonetto/Desktop/Cubli Research/Circuit Schematic/LM2596/LM2596.kicad_sym")
+		)
+		(library
+			(logical "Seeed_Studio_XIAO_Series")
+			(uri "/Users/niccolotonetto/Desktop/Cubli Research/Circuit Schematic/OPL_Kicad_Library-master/Seeed Studio XIAO Series Library/Seeed_Studio_XIAO_Series.kicad_sym")
+		)
+		(library
+			(logical "Switch")
+			(uri "${KICAD10_SYMBOL_DIR}/Switch.kicad_sym")
+		)
+		(library
+			(logical "teensy")
+			(uri "/Users/niccolotonetto/Desktop/Cubli Research/Circuit Schematic/teensy_library-master/teensy.lib")
+		)
+	)
+	(nets
+		(net
+			(code "1")
+			(name "/3V3")
+			(class "Default")
+			(node
+				(ref "C5")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "C6")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "U1")
+				(pin "3")
+				(pinfunction "VCC_3")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U3")
+				(pin "46")
+				(pinfunction "3V3_46")
+				(pintype "power_out")
+			)
+			(node
+				(ref "U5")
+				(pin "5")
+				(pinfunction "VDDIO_5")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U5")
+				(pin "8")
+				(pinfunction "VDD_8")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "2")
+			(name "/5V")
+			(class "Default")
+			(node
+				(ref "C13")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "C14")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "C15")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "C3")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "C7")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "D1")
+				(pin "2")
+				(pinfunction "A_2")
+				(pintype "passive")
+			)
+			(node
+				(ref "Servo_MG92B1")
+				(pin "2")
+				(pinfunction "V+_2")
+				(pintype "power_in")
+			)
+			(node
+				(ref "Servo_MG92B2")
+				(pin "2")
+				(pinfunction "V+_2")
+				(pintype "power_in")
+			)
+			(node
+				(ref "Servo_MG92B3")
+				(pin "2")
+				(pinfunction "V+_2")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U2")
+				(pin "14")
+				(pinfunction "VBUS_14")
+				(pintype "passive")
+			)
+			(node
+				(ref "U4")
+				(pin "2")
+				(pinfunction "OUT+_2")
+				(pintype "power_out")
+			)
+		)
+		(net
+			(code "4")
+			(name "/CANH")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "3")
+				(pinfunction "CANH_3")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "DRV2")
+				(pin "3")
+				(pinfunction "CANH_3")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "DRV3")
+				(pin "3")
+				(pinfunction "CANH_3")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "R1")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "U1")
+				(pin "7")
+				(pinfunction "CANH_7")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "5")
+			(name "/CANL")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "4")
+				(pinfunction "CANL_4")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "DRV2")
+				(pin "4")
+				(pinfunction "CANL_4")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "DRV3")
+				(pin "4")
+				(pinfunction "CANL_4")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "R2")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "U1")
+				(pin "6")
+				(pinfunction "CANL_6")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "6")
+			(name "/PWM_1")
+			(class "Default")
+			(node
+				(ref "Servo_MG92B1")
+				(pin "1")
+				(pinfunction "PWM_1")
+				(pintype "input")
+			)
+			(node
+				(ref "U3")
+				(pin "4")
+				(pinfunction "2_OUT2_4")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "7")
+			(name "/PWM_2")
+			(class "Default")
+			(node
+				(ref "Servo_MG92B2")
+				(pin "1")
+				(pinfunction "PWM_1")
+				(pintype "input")
+			)
+			(node
+				(ref "U3")
+				(pin "5")
+				(pinfunction "3_LRCLK2_5")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "8")
+			(name "/PWM_3")
+			(class "Default")
+			(node
+				(ref "Servo_MG92B3")
+				(pin "1")
+				(pinfunction "PWM_1")
+				(pintype "input")
+			)
+			(node
+				(ref "U3")
+				(pin "6")
+				(pinfunction "4_BCLK2_6")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "9")
+			(name "/SCK_LED")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "35")
+				(pinfunction "13_SCK_LED_35")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "U5")
+				(pin "13")
+				(pinfunction "SCL/SCK_13")
+				(pintype "input")
+			)
+		)
+		(net
+			(code "10")
+			(name "/VBAT")
+			(class "Default")
+			(node
+				(ref "C1")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "C2")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "DRV1")
+				(pin "1")
+				(pinfunction "V+_1")
+				(pintype "power_in")
+			)
+			(node
+				(ref "DRV2")
+				(pin "1")
+				(pinfunction "V+_1")
+				(pintype "power_in")
+			)
+			(node
+				(ref "DRV3")
+				(pin "1")
+				(pinfunction "V+_1")
+				(pintype "power_in")
+			)
+			(node
+				(ref "SW1")
+				(pin "1")
+				(pinfunction "A_1")
+				(pintype "passive")
+			)
+			(node
+				(ref "U4")
+				(pin "1")
+				(pinfunction "IN+_1")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "11")
+			(name "GND")
+			(class "Default")
+			(node
+				(ref "C10")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C13")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C14")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C15")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C3")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C5")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C6")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C7")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "DRV1")
+				(pin "5")
+				(pinfunction "GND_CAN_5")
+				(pintype "passive")
+			)
+			(node
+				(ref "DRV2")
+				(pin "5")
+				(pinfunction "GND_CAN_5")
+				(pintype "passive")
+			)
+			(node
+				(ref "DRV3")
+				(pin "5")
+				(pinfunction "GND_CAN_5")
+				(pintype "passive")
+			)
+			(node
+				(ref "Servo_MG92B1")
+				(pin "3")
+				(pinfunction "GND_3")
+				(pintype "power_in")
+			)
+			(node
+				(ref "Servo_MG92B2")
+				(pin "3")
+				(pinfunction "GND_3")
+				(pintype "power_in")
+			)
+			(node
+				(ref "Servo_MG92B3")
+				(pin "3")
+				(pinfunction "GND_3")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U1")
+				(pin "2")
+				(pinfunction "GND_2")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U2")
+				(pin "13")
+				(pinfunction "GND_13")
+				(pintype "passive")
+			)
+			(node
+				(ref "U2")
+				(pin "18")
+				(pinfunction "GND_18")
+				(pintype "passive")
+			)
+			(node
+				(ref "U2")
+				(pin "24")
+				(pinfunction "GND_24")
+				(pintype "passive")
+			)
+			(node
+				(ref "U3")
+				(pin "1")
+				(pinfunction "GND_1")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U3")
+				(pin "34")
+				(pinfunction "GND_34")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U3")
+				(pin "47")
+				(pinfunction "GND_47")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U3")
+				(pin "52")
+				(pinfunction "GND_52")
+				(pintype "input")
+			)
+			(node
+				(ref "U4")
+				(pin "4")
+				(pinfunction "OUT-_4")
+				(pintype "power_out")
+			)
+			(node
+				(ref "U5")
+				(pin "6*2")
+				(pinfunction "GND_6*2")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "12")
+			(name "GNDPWR")
+			(class "Default")
+			(node
+				(ref "BT1")
+				(pin "2")
+				(pinfunction "-_2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C1")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "C2")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "DRV1")
+				(pin "2")
+				(pinfunction "GND_PWR_2")
+				(pintype "power_in")
+			)
+			(node
+				(ref "DRV2")
+				(pin "2")
+				(pinfunction "GND_PWR_2")
+				(pintype "power_in")
+			)
+			(node
+				(ref "DRV3")
+				(pin "2")
+				(pinfunction "GND_PWR_2")
+				(pintype "power_in")
+			)
+			(node
+				(ref "U4")
+				(pin "3")
+				(pinfunction "IN-_3")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "13")
+			(name "Net-(BT1-+)")
+			(class "Default")
+			(node
+				(ref "BT1")
+				(pin "1")
+				(pinfunction "+_1")
+				(pintype "passive")
+			)
+			(node
+				(ref "F1")
+				(pin "1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "14")
+			(name "Net-(C10-Pad1)")
+			(class "Default")
+			(node
+				(ref "C10")
+				(pin "1")
+				(pintype "passive")
+			)
+			(node
+				(ref "R1")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "R2")
+				(pin "1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "15")
+			(name "Net-(D1-K)")
+			(class "Default")
+			(node
+				(ref "D1")
+				(pin "1")
+				(pinfunction "K_1")
+				(pintype "passive")
+			)
+			(node
+				(ref "U3")
+				(pin "48")
+				(pinfunction "VIN_48")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "16")
+			(name "Net-(DRV1-AUX2_3V)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "7")
+				(pinfunction "AUX2_3V_7")
+				(pintype "power_out")
+			)
+			(node
+				(ref "J1")
+				(pin "2")
+				(pinfunction "Pin_2_2")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "17")
+			(name "Net-(DRV1-AUX2_5V)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "8")
+				(pinfunction "AUX2_5V_8")
+				(pintype "power_out")
+			)
+			(node
+				(ref "J1")
+				(pin "3")
+				(pinfunction "Pin_3_3")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "18")
+			(name "Net-(DRV1-AUX2_A)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "12")
+				(pinfunction "AUX2_A_12")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J1")
+				(pin "4")
+				(pinfunction "Pin_4_4")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "19")
+			(name "Net-(DRV1-AUX2_B)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "13")
+				(pinfunction "AUX2_B_13")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J1")
+				(pin "5")
+				(pinfunction "Pin_5_5")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "20")
+			(name "Net-(DRV1-AUX2_C)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "14")
+				(pinfunction "AUX2_C_14")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J1")
+				(pin "6")
+				(pinfunction "Pin_6_6")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "21")
+			(name "Net-(DRV1-AUX2_D)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "15")
+				(pinfunction "AUX2_D_15")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J1")
+				(pin "7")
+				(pinfunction "Pin_7_7")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "22")
+			(name "Net-(DRV1-AUX2_GND)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "6")
+				(pinfunction "AUX2_GND_6")
+				(pintype "power_in")
+			)
+			(node
+				(ref "J1")
+				(pin "1")
+				(pinfunction "Pin_1_1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "23")
+			(name "Net-(DRV1-PHASE_A)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "9")
+				(pinfunction "PHASE_A_9")
+				(pintype "passive")
+			)
+			(node
+				(ref "J7")
+				(pin "3")
+				(pinfunction "Pin_3_3")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "24")
+			(name "Net-(DRV1-PHASE_B)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "10")
+				(pinfunction "PHASE_B_10")
+				(pintype "passive")
+			)
+			(node
+				(ref "J7")
+				(pin "2")
+				(pinfunction "Pin_2_2")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "25")
+			(name "Net-(DRV1-PHASE_C)")
+			(class "Default")
+			(node
+				(ref "DRV1")
+				(pin "11")
+				(pinfunction "PHASE_C_11")
+				(pintype "passive")
+			)
+			(node
+				(ref "J7")
+				(pin "1")
+				(pinfunction "Pin_1_1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "26")
+			(name "Net-(DRV2-AUX2_3V)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "7")
+				(pinfunction "AUX2_3V_7")
+				(pintype "power_out")
+			)
+			(node
+				(ref "J2")
+				(pin "2")
+				(pinfunction "Pin_2_2")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "27")
+			(name "Net-(DRV2-AUX2_5V)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "8")
+				(pinfunction "AUX2_5V_8")
+				(pintype "power_out")
+			)
+			(node
+				(ref "J2")
+				(pin "3")
+				(pinfunction "Pin_3_3")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "28")
+			(name "Net-(DRV2-AUX2_A)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "12")
+				(pinfunction "AUX2_A_12")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J2")
+				(pin "4")
+				(pinfunction "Pin_4_4")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "29")
+			(name "Net-(DRV2-AUX2_B)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "13")
+				(pinfunction "AUX2_B_13")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J2")
+				(pin "5")
+				(pinfunction "Pin_5_5")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "30")
+			(name "Net-(DRV2-AUX2_C)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "14")
+				(pinfunction "AUX2_C_14")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J2")
+				(pin "6")
+				(pinfunction "Pin_6_6")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "31")
+			(name "Net-(DRV2-AUX2_D)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "15")
+				(pinfunction "AUX2_D_15")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J2")
+				(pin "7")
+				(pinfunction "Pin_7_7")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "32")
+			(name "Net-(DRV2-AUX2_GND)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "6")
+				(pinfunction "AUX2_GND_6")
+				(pintype "passive")
+			)
+			(node
+				(ref "J2")
+				(pin "1")
+				(pinfunction "Pin_1_1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "33")
+			(name "Net-(DRV2-PHASE_A)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "9")
+				(pinfunction "PHASE_A_9")
+				(pintype "passive")
+			)
+			(node
+				(ref "J6")
+				(pin "3")
+				(pinfunction "Pin_3_3")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "34")
+			(name "Net-(DRV2-PHASE_B)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "10")
+				(pinfunction "PHASE_B_10")
+				(pintype "passive")
+			)
+			(node
+				(ref "J6")
+				(pin "2")
+				(pinfunction "Pin_2_2")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "35")
+			(name "Net-(DRV2-PHASE_C)")
+			(class "Default")
+			(node
+				(ref "DRV2")
+				(pin "11")
+				(pinfunction "PHASE_C_11")
+				(pintype "passive")
+			)
+			(node
+				(ref "J6")
+				(pin "1")
+				(pinfunction "Pin_1_1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "36")
+			(name "Net-(DRV3-AUX2_3V)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "7")
+				(pinfunction "AUX2_3V_7")
+				(pintype "power_out")
+			)
+			(node
+				(ref "J3")
+				(pin "2")
+				(pinfunction "Pin_2_2")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "37")
+			(name "Net-(DRV3-AUX2_5V)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "8")
+				(pinfunction "AUX2_5V_8")
+				(pintype "power_out")
+			)
+			(node
+				(ref "J3")
+				(pin "3")
+				(pinfunction "Pin_3_3")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "38")
+			(name "Net-(DRV3-AUX2_A)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "12")
+				(pinfunction "AUX2_A_12")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J3")
+				(pin "4")
+				(pinfunction "Pin_4_4")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "39")
+			(name "Net-(DRV3-AUX2_B)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "13")
+				(pinfunction "AUX2_B_13")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J3")
+				(pin "5")
+				(pinfunction "Pin_5_5")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "40")
+			(name "Net-(DRV3-AUX2_C)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "14")
+				(pinfunction "AUX2_C_14")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J3")
+				(pin "6")
+				(pinfunction "Pin_6_6")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "41")
+			(name "Net-(DRV3-AUX2_D)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "15")
+				(pinfunction "AUX2_D_15")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "J3")
+				(pin "7")
+				(pinfunction "Pin_7_7")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "42")
+			(name "Net-(DRV3-AUX2_GND)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "6")
+				(pinfunction "AUX2_GND_6")
+				(pintype "power_in")
+			)
+			(node
+				(ref "J3")
+				(pin "1")
+				(pinfunction "Pin_1_1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "43")
+			(name "Net-(DRV3-PHASE_A)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "9")
+				(pinfunction "PHASE_A_9")
+				(pintype "passive")
+			)
+			(node
+				(ref "J5")
+				(pin "3")
+				(pinfunction "Pin_3_3")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "44")
+			(name "Net-(DRV3-PHASE_B)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "10")
+				(pinfunction "PHASE_B_10")
+				(pintype "passive")
+			)
+			(node
+				(ref "J5")
+				(pin "2")
+				(pinfunction "Pin_2_2")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "45")
+			(name "Net-(DRV3-PHASE_C)")
+			(class "Default")
+			(node
+				(ref "DRV3")
+				(pin "11")
+				(pinfunction "PHASE_C_11")
+				(pintype "passive")
+			)
+			(node
+				(ref "J5")
+				(pin "1")
+				(pinfunction "Pin_1_1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "46")
+			(name "Net-(SW1-B)")
+			(class "Default")
+			(node
+				(ref "F1")
+				(pin "2")
+				(pintype "passive")
+			)
+			(node
+				(ref "SW1")
+				(pin "2")
+				(pinfunction "B_2")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "47")
+			(name "Net-(U1-RXD)")
+			(class "Default")
+			(node
+				(ref "U1")
+				(pin "4")
+				(pinfunction "RXD_4")
+				(pintype "tri_state")
+			)
+			(node
+				(ref "U3")
+				(pin "22")
+				(pinfunction "30_CRX3_22")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "48")
+			(name "Net-(U1-TXD)")
+			(class "Default")
+			(node
+				(ref "U1")
+				(pin "1")
+				(pinfunction "TXD_1")
+				(pintype "input")
+			)
+			(node
+				(ref "U3")
+				(pin "23")
+				(pinfunction "31_CTX3_23")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "49")
+			(name "Net-(U2-D6)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "7")
+				(pinfunction "D6_7")
+				(pintype "passive")
+			)
+			(node
+				(ref "U3")
+				(pin "3")
+				(pinfunction "1_TX1_CTX2_MISO1_3")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "50")
+			(name "Net-(U2-D7)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "8")
+				(pinfunction "D7_8")
+				(pintype "passive")
+			)
+			(node
+				(ref "U3")
+				(pin "2")
+				(pinfunction "0_RX1_CRX2_CS1_2")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "51")
+			(name "Net-(U3-9_OUT1C)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "11")
+				(pinfunction "9_OUT1C_11")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "U5")
+				(pin "4")
+				(pinfunction "INT1_4")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "52")
+			(name "Net-(U3-10_CS_MQSR)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "12")
+				(pinfunction "10_CS_MQSR_12")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "U5")
+				(pin "12")
+				(pinfunction "CS_12")
+				(pintype "input")
+			)
+		)
+		(net
+			(code "53")
+			(name "Net-(U3-11_MOSI_CTX1)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "13")
+				(pinfunction "11_MOSI_CTX1_13")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "U5")
+				(pin "14")
+				(pinfunction "SDA/PICO_14")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "54")
+			(name "Net-(U3-12_MISO_MQSL)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "14")
+				(pinfunction "12_MISO_MQSL_14")
+				(pintype "bidirectional")
+			)
+			(node
+				(ref "U5")
+				(pin "1")
+				(pinfunction "ADR/POCI_1")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "55")
+			(name "unconnected-(U1-S-Pad8)")
+			(class "Default")
+			(node
+				(ref "U1")
+				(pin "8")
+				(pinfunction "S_8")
+				(pintype "input")
+			)
+		)
+		(net
+			(code "56")
+			(name "unconnected-(U1-SHDN-Pad5)")
+			(class "Default")
+			(node
+				(ref "U1")
+				(pin "5")
+				(pinfunction "SHDN_5")
+				(pintype "input")
+			)
+		)
+		(net
+			(code "57")
+			(name "unconnected-(U2-3V3_OUT-Pad12)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "12")
+				(pinfunction "3V3_OUT_12")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "58")
+			(name "unconnected-(U2-3V3_OUT-Pad22)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "22")
+				(pinfunction "3V3_OUT_22")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "59")
+			(name "unconnected-(U2-BOOT-Pad21)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "21")
+				(pinfunction "BOOT_21")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "60")
+			(name "unconnected-(U2-D0-Pad1)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "1")
+				(pinfunction "D0_1")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "61")
+			(name "unconnected-(U2-D1-Pad2)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "2")
+				(pinfunction "D1_2")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "62")
+			(name "unconnected-(U2-D2-Pad3)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "3")
+				(pinfunction "D2_3")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "63")
+			(name "unconnected-(U2-D3-Pad4)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "4")
+				(pinfunction "D3_4")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "64")
+			(name "unconnected-(U2-D4-Pad5)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "5")
+				(pinfunction "D4_5")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "65")
+			(name "unconnected-(U2-D5-Pad6)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "6")
+				(pinfunction "D5_6")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "66")
+			(name "unconnected-(U2-D8-Pad9)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "9")
+				(pinfunction "D8_9")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "67")
+			(name "unconnected-(U2-D9-Pad10)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "10")
+				(pinfunction "D9_10")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "68")
+			(name "unconnected-(U2-D10-Pad11)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "11")
+				(pinfunction "D10_11")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "69")
+			(name "unconnected-(U2-EN-Pad17)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "17")
+				(pinfunction "EN_17")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "70")
+			(name "unconnected-(U2-MTCK-Pad20)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "20")
+				(pinfunction "MTCK_20")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "71")
+			(name "unconnected-(U2-MTDI-Pad15)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "15")
+				(pinfunction "MTDI_15")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "72")
+			(name "unconnected-(U2-MTDO-Pad16)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "16")
+				(pinfunction "MTDO_16")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "73")
+			(name "unconnected-(U2-MTMS-Pad19)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "19")
+				(pinfunction "MTMS_19")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "74")
+			(name "unconnected-(U2-VBAT-Pad23)")
+			(class "Default")
+			(node
+				(ref "U2")
+				(pin "23")
+				(pinfunction "VBAT_23")
+				(pintype "passive")
+			)
+		)
+		(net
+			(code "75")
+			(name "unconnected-(U3-3V3-Pad15)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "15")
+				(pinfunction "3V3_15")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "76")
+			(name "unconnected-(U3-3V3-Pad51)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "51")
+				(pinfunction "3V3_51")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "77")
+			(name "unconnected-(U3-5V-Pad55)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "55")
+				(pinfunction "5V_55")
+				(pintype "power_out")
+			)
+		)
+		(net
+			(code "78")
+			(name "unconnected-(U3-5_IN2-Pad7)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "7")
+				(pinfunction "5_IN2_7")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "79")
+			(name "unconnected-(U3-6_OUT1D-Pad8)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "8")
+				(pinfunction "6_OUT1D_8")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "80")
+			(name "unconnected-(U3-7_RX2_OUT1A-Pad9)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "9")
+				(pinfunction "7_RX2_OUT1A_9")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "81")
+			(name "unconnected-(U3-8_TX2_IN1-Pad10)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "10")
+				(pinfunction "8_TX2_IN1_10")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "82")
+			(name "unconnected-(U3-14_A0_TX3_SPDIF_OUT-Pad36)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "36")
+				(pinfunction "14_A0_TX3_SPDIF_OUT_36")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "83")
+			(name "unconnected-(U3-15_A1_RX3_SPDIF_IN-Pad37)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "37")
+				(pinfunction "15_A1_RX3_SPDIF_IN_37")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "84")
+			(name "unconnected-(U3-16_A2_RX4_SCL1-Pad38)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "38")
+				(pinfunction "16_A2_RX4_SCL1_38")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "85")
+			(name "unconnected-(U3-17_A3_TX4_SDA1-Pad39)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "39")
+				(pinfunction "17_A3_TX4_SDA1_39")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "86")
+			(name "unconnected-(U3-18_A4_SDA-Pad40)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "40")
+				(pinfunction "18_A4_SDA_40")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "87")
+			(name "unconnected-(U3-19_A5_SCL-Pad41)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "41")
+				(pinfunction "19_A5_SCL_41")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "88")
+			(name "unconnected-(U3-20_A6_TX5_LRCLK1-Pad42)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "42")
+				(pinfunction "20_A6_TX5_LRCLK1_42")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "89")
+			(name "unconnected-(U3-21_A7_RX5_BCLK1-Pad43)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "43")
+				(pinfunction "21_A7_RX5_BCLK1_43")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "90")
+			(name "unconnected-(U3-22_A8_CTX1-Pad44)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "44")
+				(pinfunction "22_A8_CTX1_44")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "91")
+			(name "unconnected-(U3-23_A9_CRX1_MCLK1-Pad45)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "45")
+				(pinfunction "23_A9_CRX1_MCLK1_45")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "92")
+			(name "unconnected-(U3-24_A10_TX6_SCL2-Pad16)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "16")
+				(pinfunction "24_A10_TX6_SCL2_16")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "93")
+			(name "unconnected-(U3-25_A11_RX6_SDA2-Pad17)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "17")
+				(pinfunction "25_A11_RX6_SDA2_17")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "94")
+			(name "unconnected-(U3-26_A12_MOSI1-Pad18)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "18")
+				(pinfunction "26_A12_MOSI1_18")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "95")
+			(name "unconnected-(U3-27_A13_SCK1-Pad19)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "19")
+				(pinfunction "27_A13_SCK1_19")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "96")
+			(name "unconnected-(U3-28_RX7-Pad20)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "20")
+				(pinfunction "28_RX7_20")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "97")
+			(name "unconnected-(U3-29_TX7-Pad21)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "21")
+				(pinfunction "29_TX7_21")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "98")
+			(name "unconnected-(U3-32_OUT1B-Pad24)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "24")
+				(pinfunction "32_OUT1B_24")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "99")
+			(name "unconnected-(U3-33_MCLK2-Pad25)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "25")
+				(pinfunction "33_MCLK2_25")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "100")
+			(name "unconnected-(U3-34_RX8-Pad26)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "26")
+				(pinfunction "34_RX8_26")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "101")
+			(name "unconnected-(U3-35_TX8-Pad27)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "27")
+				(pinfunction "35_TX8_27")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "102")
+			(name "unconnected-(U3-36_CS-Pad28)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "28")
+				(pinfunction "36_CS_28")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "103")
+			(name "unconnected-(U3-37_CS-Pad29)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "29")
+				(pinfunction "37_CS_29")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "104")
+			(name "unconnected-(U3-38_CS1_IN1-Pad30)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "30")
+				(pinfunction "38_CS1_IN1_30")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "105")
+			(name "unconnected-(U3-39_MISO1_OUT1A-Pad31)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "31")
+				(pinfunction "39_MISO1_OUT1A_31")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "106")
+			(name "unconnected-(U3-40_A16-Pad32)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "32")
+				(pinfunction "40_A16_32")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "107")
+			(name "unconnected-(U3-41_A17-Pad33)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "33")
+				(pinfunction "41_A17_33")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "108")
+			(name "unconnected-(U3-D+-Pad57)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "57")
+				(pinfunction "D+_57")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "109")
+			(name "unconnected-(U3-D+-Pad67)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "67")
+				(pinfunction "D+_67")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "110")
+			(name "unconnected-(U3-D--Pad56)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "56")
+				(pinfunction "D-_56")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "111")
+			(name "unconnected-(U3-D--Pad66)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "66")
+				(pinfunction "D-_66")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "112")
+			(name "unconnected-(U3-GND-Pad58)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "58")
+				(pinfunction "GND_58")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "113")
+			(name "unconnected-(U3-GND-Pad59)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "59")
+				(pinfunction "GND_59")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "114")
+			(name "unconnected-(U3-GND-Pad64)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "64")
+				(pinfunction "GND_64")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "115")
+			(name "unconnected-(U3-LED-Pad61)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "61")
+				(pinfunction "LED_61")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "116")
+			(name "unconnected-(U3-ON_OFF-Pad54)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "54")
+				(pinfunction "ON_OFF_54")
+				(pintype "input")
+			)
+		)
+		(net
+			(code "117")
+			(name "unconnected-(U3-PROGRAM-Pad53)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "53")
+				(pinfunction "PROGRAM_53")
+				(pintype "input")
+			)
+		)
+		(net
+			(code "118")
+			(name "unconnected-(U3-R+-Pad60)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "60")
+				(pinfunction "R+_60")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "119")
+			(name "unconnected-(U3-R--Pad65)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "65")
+				(pinfunction "R-_65")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "120")
+			(name "unconnected-(U3-T+-Pad63)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "63")
+				(pinfunction "T+_63")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "121")
+			(name "unconnected-(U3-T--Pad62)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "62")
+				(pinfunction "T-_62")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "122")
+			(name "unconnected-(U3-VBAT-Pad50)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "50")
+				(pinfunction "VBAT_50")
+				(pintype "power_in")
+			)
+		)
+		(net
+			(code "123")
+			(name "unconnected-(U3-VUSB-Pad49)")
+			(class "Default")
+			(node
+				(ref "U3")
+				(pin "49")
+				(pinfunction "VUSB_49")
+				(pintype "power_out")
+			)
+		)
+		(net
+			(code "124")
+			(name "unconnected-(U5-ASCX-Pad3)")
+			(class "Default")
+			(node
+				(ref "U5")
+				(pin "3")
+				(pinfunction "ASCX_3")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "125")
+			(name "unconnected-(U5-ASDX-Pad2)")
+			(class "Default")
+			(node
+				(ref "U5")
+				(pin "2")
+				(pinfunction "ASDX_2")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "126")
+			(name "unconnected-(U5-INT2-Pad9)")
+			(class "Default")
+			(node
+				(ref "U5")
+				(pin "9")
+				(pinfunction "INT2_9")
+				(pintype "bidirectional")
+			)
+		)
+		(net
+			(code "127")
+			(name "unconnected-(U5-OCS-Pad10)")
+			(class "Default")
+			(node
+				(ref "U5")
+				(pin "10")
+				(pinfunction "OCS_10")
+				(pintype "input")
+			)
+		)
+		(net
+			(code "128")
+			(name "unconnected-(U5-OSDO-Pad11)")
+			(class "Default")
+			(node
+				(ref "U5")
+				(pin "11")
+				(pinfunction "OSDO_11")
+				(pintype "output")
+			)
+		)
+	)
+)
