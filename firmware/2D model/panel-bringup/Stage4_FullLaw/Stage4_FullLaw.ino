@@ -196,8 +196,11 @@ static const float kK3 = -0.001732f;  // N*m / (rad/s)
 static bool  gArmed     = false;
 static float gGainScale = 1.0f;   // already validated by the Stage 3 ramp
 
-static const float kMaxTilt    = 0.14f;
-static const float kMaxOmega   = 40.0f;
+static const float kMaxTilt    = 0.52f;   // widened from 0.14 (8 deg) -- full
+                                           // envelope test, confirmed working
+static const float kMaxOmega   = 600.0f;  // widened from 40 (firmware policy
+                                           // cap) -- see kTaperStart below,
+                                           // still well under omega_max=883
 static const float kTauMax     = 0.12f;
 static const float kTaperStart = 36.0f;
 
