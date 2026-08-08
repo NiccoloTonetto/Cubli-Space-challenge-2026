@@ -33,22 +33,6 @@
 
 
 // ----------------------------------------------------------------------------
-// SECTION 1b: TELEMETRY MODE SELECTOR
-// ----------------------------------------------------------------------------
-// TELEMETRY_SERIAL: human-readable, tab-delimited, with header + "#" status
-//                    lines -- for reading directly in the Arduino Serial
-//                    Monitor.
-// TELEMETRY_MATLAB:  plain CSV, one line per control cycle, no header/
-//                     comment lines -- for
-//                     firmware/2D model/Validation/telemetry_matlab.m's
-//                     live scrolling plot + logging.
-// Change the line below and re-upload to switch modes.
-#define TELEMETRY_SERIAL 0
-#define TELEMETRY_MATLAB 1
-#define TELEMETRY_MODE TELEMETRY_SERIAL
-
-
-// ----------------------------------------------------------------------------
 // SECTION 2: OBJECTS AND SETTINGS
 // ----------------------------------------------------------------------------
 
@@ -67,14 +51,6 @@ const uint32_t imuClockFrequency = 4000000;
 const uint32_t kPeriodMs = 2;   // 500 Hz
 
 static uint32_t gNextSendMillis = 0;
-
-static bool gHalted = false;
-// Software pause -- see SECTION 2e. Closing the Serial Monitor does NOT
-// stop a Teensy sketch; loop() keeps running regardless, torque included.
-// Halting here also force-disarms (gArmed = false) -- it's a strict
-// superset of "a0", not an alternative to it: torque goes to zero AND the
-// IMU/CAN/telemetry loop itself freezes. Resuming ("h0") does NOT
-// re-arm -- you still need a fresh "a1", same as after any other trip.
 
 
 // ----------------------------------------------------------------------------
@@ -166,24 +142,6 @@ void printState(uint32_t t_ms, float theta, float theta_dot, float tau,
   Serial.print('\t'); Serial.println(v.velocity, 3);
 }
 
-// Same fields as printState() above, same order, but plain comma-separated
-// with no header/comment lines -- one clean line per cycle for
-// telemetry_matlab.m to parse with a simple split-on-comma.
-void telemetryMatlab(uint32_t t_ms, float theta, float theta_dot, float tau,
-                     float tauCmd, bool armed, float gainScale,
-                     float wheelOmegaLp, const Moteus::Query::Result& v) {
-  Serial.print(t_ms);
-  Serial.print(','); Serial.print(theta     * (float)RAD_TO_DEG, 4);
-  Serial.print(','); Serial.print(theta_dot * (float)RAD_TO_DEG, 4);
-  Serial.print(','); Serial.print(tau, 6);
-  Serial.print(','); Serial.print(tauCmd, 6);
-  Serial.print(','); Serial.print(armed ? 1 : 0);
-  Serial.print(','); Serial.print(gainScale, 4);
-  Serial.print(','); Serial.print(wheelOmegaLp, 6);
-  Serial.print(','); Serial.print(v.position, 6);
-  Serial.print(','); Serial.println(v.velocity, 6);
-}
-
 
 // ----------------------------------------------------------------------------
 // SECTION 2d: CONTROL — full law: k1 + k2 + k3
@@ -196,11 +154,8 @@ static const float kK3 = -0.001732f;  // N*m / (rad/s)
 static bool  gArmed     = false;
 static float gGainScale = 1.0f;   // already validated by the Stage 3 ramp
 
-static const float kMaxTilt    = 0.52f;   // widened from 0.14 (8 deg) -- full
-                                           // envelope test, confirmed working
-static const float kMaxOmega   = 600.0f;  // widened from 40 (firmware policy
-                                           // cap) -- see kTaperStart below,
-                                           // still well under omega_max=883
+static const float kMaxTilt    = 0.52f;
+static const float kMaxOmega   = 600.0f;
 static const float kTauMax     = 0.12f;
 static const float kTaperStart = 36.0f;
 
@@ -304,41 +259,17 @@ void handleSerialCommands() {
   const char cmd = line.charAt(0);
   const float val = line.substring(1).toFloat();
 
-  // Command handling itself always runs, in both telemetry modes -- only
-  // the "#" status echoes below are Serial-mode only, so a MATLAB-mode
-  // stream stays clean CSV even while you arm/disarm from the terminal.
   if (cmd == 'a') {
     gArmed = (val != 0.0f);
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
     Serial.print("# gArmed = "); Serial.println(gArmed ? "TRUE" : "FALSE");
-#endif
   } else if (cmd == 'g') {
     gGainScale = val < 0.0f ? 0.0f : (val > 1.0f ? 1.0f : val);
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
     Serial.print("# gGainScale = "); Serial.println(gGainScale, 3);
-#endif
   } else if (cmd == 'o') {
     kThetaOffset = val * (float)DEG_TO_RAD;
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
     Serial.print("# kThetaOffset = "); Serial.print(val, 4); Serial.println(" deg");
-#endif
-  } else if (cmd == 'h') {
-    gHalted = (val != 0.0f);
-    if (gHalted && gArmed) {
-      gArmed = false;
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
-      Serial.println("# disarmed by halt");
-#endif
-    }
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
-    Serial.print("# gHalted = ");
-    Serial.println(gHalted ? "TRUE (idle -- no IMU reads, no CAN traffic)"
-                            : "FALSE (resumed, still DISARMED -- send a1)");
-#endif
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
   } else {
-    Serial.println("# unknown. use: a<0/1>  g<0..1>  o<deg>  h<0/1>");
-#endif
+    Serial.println("# unknown. use: a<0/1>  g<0..1>  o<deg>");
   }
 }
 
@@ -378,12 +309,9 @@ void setup() {
     Serial.println("Warning: could not raise BMI270 ODR to 400 Hz");
   }
 
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
   Serial.println("t_ms\ttheta_deg\ttheta_dot_dps\ttau_Nm\ttau_cmd_Nm\tarmed\t"
                   "gain_scale\twheel_omega_lp\twheel_pos\twheel_vel");
   Serial.println("# STARTS DISARMED. Send a1 to arm. o<deg> sets mount offset.");
-  Serial.println("# h1 halts (idle + disarm), h0 resumes (still disarmed).");
-#endif
 
   gNextSendMillis = millis();
 
@@ -397,10 +325,6 @@ void setup() {
 void loop() {
 
   handleSerialCommands();
-
-  // Halted: skip IMU reads, CAN traffic, and telemetry entirely. Serial
-  // commands above still run every pass, so "h0" always gets through.
-  if (gHalted) { return; }
 
   if (static_cast<int32_t>(millis() - gNextSendMillis) < 0) { return; }
   gNextSendMillis += kPeriodMs;
@@ -421,13 +345,8 @@ void loop() {
   commandWheel(theta, theta_dot, wheel_omega);
 
   // --- telemetry ---
-#if TELEMETRY_MODE == TELEMETRY_MATLAB
-  telemetryMatlab(time, theta, theta_dot, gLastTau, gLastTauCmd, gArmed,
-                  gGainScale, gWheelOmegaLp, v);
-#else
   printState(time, theta, theta_dot, gLastTau, gLastTauCmd, gArmed,
              gGainScale, gWheelOmegaLp, v);
-#endif
 
 }   // end of loop()
 
