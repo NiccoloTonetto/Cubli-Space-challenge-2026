@@ -1,0 +1,436 @@
+// ============================================================================
+// TEENSY 4.1 + moteus-n1 (CAN3) + BMI270 IMU (SPI) — STAGE 0: OBSERVE MODE
+// ============================================================================
+// Estimator running, motor NEVER commanded. The point of this stage is to
+// prove theta/theta_dot are trustworthy BEFORE the wheel is allowed to spin
+// at all — cheapest confidence available.
+//
+// From: Arduino Bring-Up Plan — Sections 2b and 2d, §2 "Stage 0".
+// This file also folds in Order-of-work steps 1-2 (raise the loop rate,
+// restructure the actuation path for torque mode) since those are
+// prerequisites, not stage-specific — every later stage file builds on top
+// of what's here.
+//
+// STAGE 0 CHECKLIST (~30 min):
+//   [ ] theta_deg against a protractor at +/-10 deg and +/-30 deg
+//   [ ] Sign: tilt the rig RIGHT by hand -> theta_deg goes POSITIVE
+//       AND theta_dot_dps goes POSITIVE during the motion
+//   [ ] Balance the panel by hand at true vertical, read theta_deg, send
+//       "o<value in deg>" over Serial (e.g. "o1.20") until theta_deg reads
+//       ~0. That value is kThetaOffset — write it down, you hardcode it
+//       into every later stage file.
+//   [ ] Tilt fast and watch theta_acc_deg vs theta_deg side by side: the
+//       raw column (theta_acc_deg) should overshoot wildly, the filtered
+//       column (theta_deg) should stay clean. That's the lever-arm
+//       rejection working — seeing it once is worth more than reading
+//       about it.
+//   [ ] Hold still 60 s: theta_deg must not drift.
+//
+// If theta_deg is inverted           -> swap the two atan2f arguments below.
+// If theta_dot_dps alone is inverted -> negate imuData.wz in readIMU().
+//
+// tau_preview_Nm below is NEVER sent anywhere. It's the torque the full LQR
+// law would command right now, printed so you can eyeball plausibility
+// while the motor stays off. Motor gets SetStop() every cycle, full stop,
+// unconditionally — there is no code path in this file that can spin it.
+// ============================================================================
+
+
+// ----------------------------------------------------------------------------
+// SECTION 1: LIBRARY INCLUDES
+// ----------------------------------------------------------------------------
+
+#include <MoteusTeensy.h>
+// Teensy on-board CAN3 support for talking to the moteus-n1 driver.
+
+#include <SPI.h>
+// SPI.h: lets the Teensy talk over SPI, the 4-wire protocol (SCK, MOSI,
+// MISO, CS) your BMI270 IMU is wired with instead of I2C.
+
+#include "SparkFun_BMI270_Arduino_Library.h"
+// SparkFun's official library for the BMI270 IMU chip. The same library
+// handles both I2C and SPI — which one gets used just depends on whether
+// you call imu.beginI2C() or imu.beginSPI() down in setup().
+
+
+// ----------------------------------------------------------------------------
+// SECTION 2: OBJECTS AND SETTINGS
+// ----------------------------------------------------------------------------
+
+// --- moteus / CAN3 setup ---
+ACAN_T4FD_Settings canSettings(1000000, DataBitRateFactor::x1);
+MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
+
+Moteus moteus1(canBus, []() {
+  Moteus::Options options;
+  options.id = 1;
+  return options;
+}());
+
+// --- IMU setup ---
+BMI270 imu;
+// Creates a software "handle" representing your physical BMI270 chip.
+
+const uint8_t imuChipSelectPin = 10;
+// Teensy pin your IMU's CS wire is connected to. Unlike MOSI/MISO/SCK —
+// fixed by the hardware SPI bus — CS can be any free digital pin.
+// NOTE: SCK is pin 13, which is ALSO LED_BUILTIN on the Teensy 4.1.
+// Do not drive the built-in LED while SPI is running.
+
+const uint32_t imuClockFrequency = 4000000;
+// RAISED from 100 kHz (Order of work step 1). At 100 kHz a 12-byte burst
+// read costs ~1 ms, which ate 20 % of a 5 ms budget and made a fast loop
+// impossible. 4 MHz costs ~24 us instead. Can go to 8-10 MHz (BMI270
+// ceiling) once this is proven stable on the bench.
+
+const uint32_t kPeriodMs = 2;
+// RAISED from 20 ms (50 Hz) to 2 ms (500 Hz) — inside the 400-1000 Hz
+// target band from the Discrete Loop Test (35 Hz stability floor, 281 Hz
+// anti-aliasing floor on the 141 Hz wheel fundamental — anti-aliasing
+// dominates by 8x, so this is a filter-architecture decision, not a
+// control-bandwidth one; the fastest closed-loop pole is ~12.5 rad/s,
+// ~2 Hz, so even 500 Hz is ~250x oversampled relative to control dynamics).
+
+static uint32_t gNextSendMillis = 0;
+// Tracks when the next control/telemetry cycle is due.
+
+static bool gHalted = false;
+// Software pause -- see SECTION 2e. Closing the Serial Monitor does NOT
+// stop a Teensy sketch (unlike a classic Arduino Uno, USB serial closing
+// is not a reset signal); loop() keeps running regardless. This flag is
+// the actual way to freeze IMU reads and CAN traffic without reflashing
+// or touching the board. Doesn't change actuation risk in Stage 0 (the
+// motor is hard-stopped either way) -- it exists to quiet the CAN bus and
+// the serial spam so you can read a result calmly.
+
+
+// ----------------------------------------------------------------------------
+// SECTION 2b: STATE ESTIMATION
+// ----------------------------------------------------------------------------
+
+struct IMUData {
+  float ax, ay, az;   // accel — any consistent unit (g or m/s^2)
+  float wx, wy, wz;   // gyro, rad/s
+};
+
+// ---- IMU calibration -------------------------------------------------------
+// From data/imu_calibration/imu-cal-20260805T125013.log
+// BMI270, 2026-08-05, 23.5 degC. All SI.
+// Applied as: a_corrected = (a_raw - offset) / scale
+//
+// NOTE: the SparkFun library reports accel in g and gyro in deg/s, so both
+// are converted to SI BEFORE these numbers are applied.
+
+static const float kG0 = 9.80665f;   // g -> m/s^2
+
+static const float kGyroBias[3]    = { +0.002348f, -0.001140f, -0.000762f }; // rad/s
+static const float kAccelOffset[3] = { -0.092282f, -0.196510f, +0.050664f }; // m/s^2
+static const float kAccelScale[3]  = {  0.991085f,  0.991035f,  1.003787f };
+
+
+// Complementary filter time constant, seconds.
+// Above this, trust the gyro; below it, trust the accelerometer.
+// CHANGED from 0.50 -> 1.00: measured residual gyro bias (0.0005-0.0023
+// rad/s, see kGyroBias above) is small, which pushes the U-shaped optimum
+// up. IMU Lever Arm & Estimator - Block C: tau sweep gives 1.39/1.01/0.50/
+// 0.29/0.70 deg error at tau = 0.05/0.10/0.30/1.00/3.00 s. 1.00 s wins in
+// that sweep; it's a shallow optimum (0.5-1.5 s all work), sweep on the
+// bench once this estimator is trusted, not before.
+static const float kTau = 1.00f;
+
+// Reject the accelerometer angle when |a| strays from 1g — that means the
+// wheel's reaction torque is injecting tangential acceleration and the
+// "gravity" direction is a lie. Units of m/s^2.
+static const float kAccelGateLo = 0.85f * kG0;   // m/s^2
+static const float kAccelGateHi = 1.15f * kG0;
+
+// Mount offset. atan2f(ax-ay, ax+ay) assumes the IMU sits at EXACTLY 45 deg;
+// it will not. Any mounting error becomes a constant tilt offset, and a
+// constant offset forces a standing wheel speed once the full law is
+// closed (K1*e/K3 rad/s per radian of error — 1 deg of error is already
+// ~27 % of the 40 rad/s wheel cap). Measure this in Stage 0 — see checklist
+// above — and set it live with "o<deg>" over Serial. NOT const: this is the
+// one thing in this file you're expected to tune without recompiling.
+static float kThetaOffset = 0.0f;   // rad
+
+
+// Converts the SparkFun library's native units into the struct above.
+
+IMUData readIMU(BMI270& sensor) {
+  IMUData d;
+
+  // Convert g -> m/s^2, then remove offset and scale error.
+  d.ax = (sensor.data.accelX * kG0 - kAccelOffset[0]) / kAccelScale[0];
+  d.ay = (sensor.data.accelY * kG0 - kAccelOffset[1]) / kAccelScale[1];
+  d.az = (sensor.data.accelZ * kG0 - kAccelOffset[2]) / kAccelScale[2];
+
+  // Convert deg/s -> rad/s, then remove zero-rate offset.
+  d.wx = sensor.data.gyroX * (float)DEG_TO_RAD - kGyroBias[0];
+  d.wy = sensor.data.gyroY * (float)DEG_TO_RAD - kGyroBias[1];
+  d.wz = sensor.data.gyroZ * (float)DEG_TO_RAD - kGyroBias[2];
+
+  return d;
+}
+
+
+// theta_acc is exposed via an out-param so Stage 0 telemetry can print the
+// raw and filtered angle side by side (checklist item: "tilt fast, watch
+// theta_acc_deg vs theta_deg").
+void calculateState(const IMUData& imuData, float& theta, float& theta_dot,
+                     float& theta_acc_out) {
+
+  // --- dt from an internal timer, so the signature stays clean ---
+  static uint32_t lastMicros = 0;
+  static bool initialized = false;
+
+  const uint32_t now = micros();
+  float dt = (now - lastMicros) * 1e-6f;
+  lastMicros = now;
+  if (dt <= 0.0f || dt > 0.5f) { dt = kPeriodMs * 1e-3f; }  // guard first call
+
+  // --- angular rate: body Z is the rotation axis, so it is a direct read ---
+  // Positive wz = rotation about +Z (into the page) = tilting right = +theta_dot.
+  theta_dot = imuData.wz;
+
+  // --- accelerometer tilt ---
+  // X points up-left, Y points up-right, so vertical bisects them and both
+  // read +g/sqrt(2) at rest. Rotating the body by +theta gives
+  //     ax = g*cos(theta - 45deg),  ay = g*cos(theta + 45deg)
+  // Difference and sum collapse the 45deg offset:
+  //     ax - ay = sqrt(2)*g*sin(theta)
+  //     ax + ay = sqrt(2)*g*cos(theta)
+  // The ratio cancels g, so units and calibration scale do not matter, and
+  // atan2 keeps it singularity-free over the full +/-180 deg.
+  // kThetaOffset corrects for the mount not sitting at EXACTLY 45 deg.
+  const float theta_acc = atan2f(imuData.ax - imuData.ay,
+                                 imuData.ax + imuData.ay) - kThetaOffset;
+  theta_acc_out = theta_acc;
+
+  // --- gate the accelerometer on gravity magnitude ---
+  const float aMag = sqrtf(imuData.ax*imuData.ax +
+                           imuData.ay*imuData.ay +
+                           imuData.az*imuData.az);
+  const bool accelTrusted = (aMag > kAccelGateLo && aMag < kAccelGateHi);
+
+  if (!initialized) {
+    theta = theta_acc;        // seed from the accelerometer, no drift yet
+    initialized = true;
+    return;
+  }
+
+  // --- complementary filter ---
+  // Gyro integration is smooth but drifts; the accelerometer is absolute but
+  // noisy and corrupted by wheel torque. alpha is derived from dt so the
+  // blend stays rate-independent if you change the loop period.
+  const float theta_gyro = theta + theta_dot * dt;
+
+  if (accelTrusted) {
+    const float alpha = kTau / (kTau + dt);
+    theta = alpha * theta_gyro + (1.0f - alpha) * theta_acc;
+  } else {
+    theta = theta_gyro;       // pure integration while the wheel is pushing
+  }
+}
+
+
+// ----------------------------------------------------------------------------
+// SECTION 2c: TELEMETRY
+// ----------------------------------------------------------------------------
+
+// Tab-separated, no labels: the Arduino Serial Plotter graphs this directly
+// (Tools -> Serial Plotter), and redirecting to a file gives you a TSV that
+// numpy.loadtxt or pandas will read with no parsing.
+//
+// Columns: time_ms  theta_deg  theta_dot_dps  theta_acc_deg  tau_preview_Nm
+//          wheel_pos  wheel_vel
+void printState(uint32_t t_ms, float theta, float theta_dot, float theta_acc,
+                float tau_preview, const Moteus::Query::Result& v) {
+  Serial.print(t_ms);
+  Serial.print('\t'); Serial.print(theta      * (float)RAD_TO_DEG, 2);
+  Serial.print('\t'); Serial.print(theta_dot  * (float)RAD_TO_DEG, 2);
+  Serial.print('\t'); Serial.print(theta_acc  * (float)RAD_TO_DEG, 2);
+  Serial.print('\t'); Serial.print(tau_preview, 4);
+  Serial.print('\t'); Serial.print(v.position, 3);
+  Serial.print('\t'); Serial.println(v.velocity, 3);
+}
+
+
+// ----------------------------------------------------------------------------
+// SECTION 2d: CONTROL — PREVIEW ONLY, NEVER ACTUATED THIS STAGE
+// ----------------------------------------------------------------------------
+
+// Gains from LQR on the measured plant (Simscape Panel Model Build Guide,
+// Gate 7). Verified closed-loop poles for this K: approx -12.5, -9.7, -6.3
+// rad/s (all real — not the -15/-9/-6 or the -9.72+/-0.76j/-5.05 figures
+// that appear in the docs; both were transcription errors, re-derived
+// directly from eig(A - B*K) against cubli_panel_params('measured')).
+static const float kK1 = -1.0998f;    // N*m / rad        (position)
+static const float kK2 = -0.1232f;    // N*m / (rad/s)     (rate / damping)
+static const float kK3 = -0.001732f;  // N*m / (rad/s)     (wheel momentum)
+
+// Full-state feedback preview: tau = -(K1*theta + K2*theta_dot + K3*wheel_omega).
+// This is exactly what commandWheel() will start actually sending in
+// Stage 2 onward. Computing it here — while the output stays hard-wired to
+// zero below — is what makes Stage 0 useful for more than just the
+// estimator: a wildly implausible preview number (way outside +/-0.4 N*m,
+// wrong sign on a slow tilt) is worth catching now, for free.
+float previewControlTorque(float theta, float theta_dot, float wheel_omega) {
+  return -(kK1 * theta + kK2 * theta_dot + kK3 * wheel_omega);
+}
+
+
+// ----------------------------------------------------------------------------
+// SECTION 2e: SERIAL COMMANDS
+// ----------------------------------------------------------------------------
+
+// Two live-tunable things this stage: the mount offset, and a halt/resume
+// switch. Recompiling between offset guesses while balancing a panel by
+// hand wastes the whole 30 minutes -- and there needs to be SOME way to
+// quiet this thing down that isn't "unplug it" or "reflash it".
+//
+// Runs on every pass through loop(), NOT gated by kPeriodMs or gHalted --
+// commands must stay responsive even while halted, or "h1" would be a
+// one-way door.
+void handleSerialCommands() {
+  if (!Serial.available()) { return; }
+  String line = Serial.readStringUntil('\n');
+  line.trim();
+  if (line.length() == 0) { return; }
+
+  const char cmd = line.charAt(0);
+  const float val = line.substring(1).toFloat();
+
+  if (cmd == 'o') {
+    kThetaOffset = val * (float)DEG_TO_RAD;
+    Serial.print("# kThetaOffset = "); Serial.print(val, 4);
+    Serial.println(" deg");
+  } else if (cmd == 'h') {
+    gHalted = (val != 0.0f);
+    Serial.print("# gHalted = ");
+    Serial.println(gHalted ? "TRUE (idle -- no IMU reads, no CAN traffic)"
+                            : "FALSE (resumed)");
+  } else {
+    Serial.println("# unknown command. use: o<deg>  h<0/1>");
+  }
+}
+
+
+// ----------------------------------------------------------------------------
+// SECTION 3: setup() — RUNS EXACTLY ONCE
+// ----------------------------------------------------------------------------
+
+void setup() {
+
+  Serial.begin(115200);
+  while (!Serial) {}          // DELETE this line to run untethered
+  Serial.println("started - STAGE 0: OBSERVE MODE (motor will not spin)");
+
+  // --- bring up CAN3 / moteus ---
+  const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
+  while (errorCode != 0) {
+    Serial.print("CAN error 0x");
+    Serial.println(errorCode, HEX);
+    delay(1000);
+  }
+
+  moteus1.SetStop();
+  Serial.println("all stopped");
+
+  // --- bring up the IMU ---
+  // The BMI270 boots in I2C mode and latches to SPI on the first CS rising
+  // edge, so CS must be a configured output sitting high before we start.
+  pinMode(imuChipSelectPin, OUTPUT);
+  digitalWrite(imuChipSelectPin, HIGH);
+
+  SPI.begin();
+
+  while (imu.beginSPI(imuChipSelectPin, imuClockFrequency) != BMI2_OK) {
+    // beginSPI() both checks that the chip responds AND initializes it.
+    // Retry rather than continue silently with a dead sensor.
+    Serial.println("Error: BMI270 not connected, check wiring and CS pin!");
+    delay(1000);
+  }
+  Serial.println("BMI270 connected!");
+
+  // Raise the output data rate to match the faster loop above (Order of
+  // work step 1, part 2/3). Reading faster than the sensor's ODR just
+  // re-reads the same sample and the gyro looks stepped.
+  if (imu.setAccelODR(BMI2_ACC_ODR_400HZ) != BMI2_OK ||
+      imu.setGyroODR(BMI2_GYR_ODR_400HZ)  != BMI2_OK) {
+    Serial.println("Warning: could not raise BMI270 ODR to 400 Hz "
+                    "(loop will run, but the gyro may look stepped)");
+  } else {
+    Serial.println("BMI270 ODR set to 400 Hz");
+  }
+
+  // Column header for the plotter / TSV.
+  Serial.println("t_ms\ttheta_deg\ttheta_dot_dps\ttheta_acc_deg\t"
+                  "tau_preview_Nm\twheel_pos\twheel_vel");
+  Serial.println("# send o<deg> to set kThetaOffset, e.g. o1.20");
+  Serial.println("# send h1 to halt (idle, no CAN/IMU traffic), h0 to resume");
+
+  // Anchor the scheduler to now. Without this, gNextSendMillis starts at 0
+  // while millis() is already in the thousands, and the first loop() fires
+  // hundreds of catch-up cycles back to back.
+  gNextSendMillis = millis();
+
+}   // end of setup()
+
+
+// ----------------------------------------------------------------------------
+// SECTION 4: loop() — RUNS OVER AND OVER, FOREVER
+// ----------------------------------------------------------------------------
+
+void loop() {
+
+  handleSerialCommands();
+
+  // Halted: skip IMU reads, CAN traffic, and telemetry entirely. Serial
+  // commands above still run every pass, so "h0" always gets through.
+  if (gHalted) { return; }
+
+  // Rollover-safe deadline check.
+  if (static_cast<int32_t>(millis() - gNextSendMillis) < 0) { return; }
+  gNextSendMillis += kPeriodMs;
+
+  const uint32_t time = millis();
+
+  // --- read the IMU ---
+  imu.getSensorData();
+
+  // --- state estimation ---
+  static float theta = 0.0f;
+  static float theta_dot = 0.0f;
+  float theta_acc = 0.0f;
+  calculateState(readIMU(imu), theta, theta_dot, theta_acc);
+
+  // --- motor: HARD STOP, every cycle, unconditionally ---
+  // No Command struct, no gains, no "armed" flag to get wrong. This is the
+  // one guarantee Stage 0 exists to make.
+  moteus1.SetStop();
+  const auto& v = moteus1.last_result().values;
+  const float wheel_omega = v.velocity * 2.0f * (float)PI;   // rev/s -> rad/s
+
+  // --- control law: computed, printed, NEVER sent ---
+  const float tau_preview = previewControlTorque(theta, theta_dot, wheel_omega);
+
+  // --- telemetry ---
+  printState(time, theta, theta_dot, theta_acc, tau_preview, v);
+
+}   // end of loop()
+
+
+// ============================================================================
+// NOTES
+// ----------------------------------------------------------------------------
+// Sign conventions to verify on the bench before trusting anything:
+//   - Tilt the rig to the RIGHT by hand. theta should go POSITIVE and
+//     theta_dot should go POSITIVE during the motion.
+//   - If theta is right but theta_dot is inverted, negate imuData.wz.
+//   - If theta itself is inverted, swap the two arguments to atan2f.
+//   - Check theta against a protractor at +/-10 and +/-30 degrees.
+//
+// Next: Stage1_OpenLoopTorque/Stage1_OpenLoopTorque.ino — panel held by
+// hand, fixed 0.01 N*m pulse, first real test of torque mode and the
+// sign of the reaction torque (the check that "kills hardware" if missed).
+// ============================================================================
