@@ -31,17 +31,18 @@
 // SECTION 1b: TELEMETRY MODE SELECTOR
 // ----------------------------------------------------------------------------
 // Same pattern as the 2D Stage4 sketch.
-// TELEMETRY_SERIAL: human-readable, tab-delimited, with header + "#" status
-//                    lines -- for reading directly in the Arduino Serial
-//                    Monitor.
-// TELEMETRY_MATLAB:  plain CSV, one line per control cycle, no header/
-//                     comment lines -- for a matlab/3Dmodel/Validation
-//                     live-plot script (TODO, mirror
-//                     matlab/2Dmodel/Validation/telemetry_matlab.m).
+// SERIALMONITORMODE: human-readable, tab-delimited, with header + "#"
+//                     status lines -- for reading directly in the Arduino
+//                     Serial Monitor.
+// PLOTMODE:           plain CSV, one line per control cycle, no header/
+//                      comment lines -- for a matlab/3Dmodel/Validation
+//                      live-plot script (TODO, mirror
+//                      matlab/2Dmodel/Validation/telemetry_matlab.m or
+//                      telemetry_python.py -- both read the same format).
 // Change the line below and re-upload to switch modes.
-#define TELEMETRY_SERIAL 0
-#define TELEMETRY_MATLAB 1
-#define TELEMETRY_MODE TELEMETRY_SERIAL
+#define SERIALMONITORMODE 0
+#define PLOTMODE 1
+#define TELEMETRY_MODE SERIALMONITORMODE
 
 
 // ----------------------------------------------------------------------------
@@ -175,11 +176,12 @@ void printState(uint32_t t_ms, const AttitudeState& state,
 }
 
 // Same fields as printState() above, same order, but plain comma-separated
-// with no header/comment lines -- for a MATLAB live-plot script (TODO,
-// mirror matlab/2Dmodel/Validation/telemetry_matlab.m).
-void telemetryMatlab(uint32_t t_ms, const AttitudeState& state,
-                     const float tauCmd[3], bool armed, float gainScale,
-                     const float wheelPos[3], const float wheelVel[3]) {
+// with no header/comment lines -- for a PLOTMODE live-plot script (TODO,
+// mirror matlab/2Dmodel/Validation/telemetry_matlab.m or
+// telemetry_python.py -- both read this exact same format).
+void telemetryPlot(uint32_t t_ms, const AttitudeState& state,
+                   const float tauCmd[3], bool armed, float gainScale,
+                   const float wheelPos[3], const float wheelVel[3]) {
   Serial.print(t_ms);
   for (int i = 0; i < 4; ++i) { Serial.print(','); Serial.print(state.q[i], 6); }
   for (int i = 0; i < 3; ++i) { Serial.print(','); Serial.print(state.w[i] * (float)RAD_TO_DEG, 4); }
@@ -286,32 +288,33 @@ void handleSerialCommands() {
   const float val = line.substring(1).toFloat();
 
   // Command handling itself always runs, in both telemetry modes -- only
-  // the "#" status echoes below are Serial-mode only, so a MATLAB-mode
-  // stream stays clean CSV even while you arm/disarm from the terminal.
+  // the "#" status echoes below are Serial-Monitor-mode only, so a
+  // PLOTMODE stream stays clean CSV even while you arm/disarm from the
+  // terminal.
   if (cmd == 'a') {
     gArmed = (val != 0.0f);
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
+#if TELEMETRY_MODE == SERIALMONITORMODE
     Serial.print("# gArmed = "); Serial.println(gArmed ? "TRUE" : "FALSE");
 #endif
   } else if (cmd == 'g') {
     gGainScale = val < 0.0f ? 0.0f : (val > 1.0f ? 1.0f : val);
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
+#if TELEMETRY_MODE == SERIALMONITORMODE
     Serial.print("# gGainScale = "); Serial.println(gGainScale, 3);
 #endif
   } else if (cmd == 'h') {
     gHalted = (val != 0.0f);
     if (gHalted && gArmed) {
       gArmed = false;
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
+#if TELEMETRY_MODE == SERIALMONITORMODE
       Serial.println("# disarmed by halt");
 #endif
     }
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
+#if TELEMETRY_MODE == SERIALMONITORMODE
     Serial.print("# gHalted = ");
     Serial.println(gHalted ? "TRUE (idle -- no IMU reads, no CAN traffic)"
                             : "FALSE (resumed, still DISARMED -- send a1)");
 #endif
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
+#if TELEMETRY_MODE == SERIALMONITORMODE
   } else {
     // TODO: 2D's 'o' (mount-offset) command has no 3D equivalent yet --
     // add per-axis calibration commands here once attitude calibration
@@ -357,7 +360,7 @@ void setup() {
     Serial.println("Warning: could not raise BMI270 ODR to 400 Hz");
   }
 
-#if TELEMETRY_MODE == TELEMETRY_SERIAL
+#if TELEMETRY_MODE == SERIALMONITORMODE
   Serial.println("t_ms\tq0\tq1\tq2\tq3\twx_dps\twy_dps\twz_dps\t"
                   "tau_x\ttau_y\ttau_z\tarmed\tgain_scale\t"
                   "wheelX_pos\twheelX_vel\twheelY_pos\twheelY_vel\twheelZ_pos\twheelZ_vel");
@@ -412,8 +415,8 @@ void loop() {
   }
 
   // --- telemetry ---
-#if TELEMETRY_MODE == TELEMETRY_MATLAB
-  telemetryMatlab(time, state, tauCmd, gArmed, gGainScale, wheelPos, wheelVel);
+#if TELEMETRY_MODE == PLOTMODE
+  telemetryPlot(time, state, tauCmd, gArmed, gGainScale, wheelPos, wheelVel);
 #else
   printState(time, state, tauCmd, gArmed, gGainScale, wheelPos, wheelVel);
 #endif

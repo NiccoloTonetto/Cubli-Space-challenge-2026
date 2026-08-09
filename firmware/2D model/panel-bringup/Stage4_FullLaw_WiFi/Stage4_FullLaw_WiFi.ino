@@ -1,15 +1,38 @@
 // ============================================================================
-// TEENSY 4.1 + moteus-n1 (CAN3) + BMI270 IMU (SPI) — STAGE 4: FULL LAW
+// TEENSY 4.1 + moteus-n1 (CAN3) + BMI270 IMU (SPI) — STAGE 4: FULL LAW (WiFi)
 // ============================================================================
-// PANEL STILL HELD BY HAND. Adds k3 (wheel momentum management) on top of
-// k1 + k2. The wheel should now UNWIND after each correction instead of
-// spinning up steadily the way it did in Stage 3.
+// Same control law and hardware wiring as Stage4_FullLaw/Stage4_FullLaw.ino
+// -- this file does NOT change the physics/estimator/control code at all.
+// It only adds a second telemetry/command channel (Serial1, wired to a XIAO
+// ESP32C6 running xiao_teensy_bridge.ino) so the panel can run untethered
+// from USB, with the XIAO relaying everything over WiFi/UDP to the laptop.
 //
-// From: Arduino Bring-Up Plan — Sections 2b and 2d, §2 "Stage 4".
+// Stage4_FullLaw.ino itself is intentionally left untouched -- it remains
+// the plain USB-tethered reference/fallback build. This is a parallel file.
+//
+// --------------------------- LINK MODE ---------------------------
+// gLinkMode selects which stream (Serial = USB, Serial1 = XIAO) is used
+// for telemetry OUT and is watched for the WiFi-link watchdog. It does NOT
+// gate which stream commands are read FROM -- both Serial and Serial1 are
+// always polled for incoming lines, every loop() iteration, regardless of
+// mode, so a mode-switch command is never missed no matter what the board
+// is currently doing. Switch it live with:
+//   t0   -> USB mode   (telemetry/watchdog on Serial)
+//   t1   -> WiFi mode  (telemetry/watchdog on Serial1)      [boot default]
+// Recognized on EITHER stream, so you can always flip it from whichever
+// channel is currently reachable.
+//
+// Wiring to the XIAO (see xiao_teensy_bridge.ino):
+//   Teensy Serial1 TX1 (pin 1)  -> XIAO D7 (RX)
+//   Teensy Serial1 RX1 (pin 0)  <- XIAO D6 (TX)
+//   Common GND between the two boards.
+//   Serial1.begin(1000000, ...) -- 1 Mbaud. A full PLOTMODE CSV line is
+//   ~90 bytes; at 500 Hz that's ~450 kbps needed, so 1 Mbaud leaves
+//   headroom (115200, the USB default, would be a 3-4x bottleneck here).
 //
 // STAGE 4 CHECKLIST — panel held by hand, gGainScale = 1.0:
-//   Send "a1" to arm.
-//   [ ] Wheel unwinds after each correction (watch wheel_omega_lp below —
+//   Send "a1" to arm (on either Serial or Serial1).
+//   [ ] Wheel unwinds after each correction (watch wheel_omega_lp below --
 //       it's wheel_omega through a ~5 s low-pass, i.e. the STANDING speed,
 //       not the instantaneous one).
 //   [ ] wheel_omega_lp near zero -> healthy.
@@ -36,14 +59,14 @@
 // SECTION 1b: TELEMETRY MODE SELECTOR
 // ----------------------------------------------------------------------------
 // SERIALMONITORMODE: human-readable, tab-delimited, with header + "#"
-//                     status lines -- for reading directly in the Arduino
-//                     Serial Monitor.
+//                     status lines -- for reading directly in a Serial
+//                     Monitor (USB or, over the link, whatever terminal
+//                     the XIAO's UDP bridge feeds into).
 // PLOTMODE:           plain CSV, one line per control cycle, no header/
-//                      comment lines -- for either
-//                      matlab/2Dmodel/Validation/telemetry_matlab.m or
-//                      telemetry_python.py's live scrolling plot + logging.
-//                      Both read the exact same wire format, so which one
-//                      you run on the PC side is irrelevant to the Teensy.
+//                      comment lines -- for telemetry_python_wifi.py (or
+//                      the original telemetry_matlab.m / telemetry_python.py
+//                      if run over USB in t0/USB mode). Same wire format
+//                      regardless of which stream it's sent on.
 // Change the line below and re-upload to switch modes.
 #define SERIALMONITORMODE 0
 #define PLOTMODE 1
@@ -70,9 +93,56 @@ const uint32_t kPeriodMs = 2;   // 500 Hz
 
 static uint32_t gNextSendMillis = 0;
 
+// ---------------- Link mode + command channels ----------------
+enum class LinkMode : uint8_t { USB = 0, WIFI = 1 };
+static LinkMode gLinkMode = LinkMode::WIFI;   // boot default -- see header
+
+const uint32_t kLinkBaud       = 1000000;   // Serial1 <-> XIAO
+const uint32_t kLinkTimeoutMs  = 300;       // auto-disarm if WIFI mode and
+                                             // no Serial1 line in this long
+                                             // (telemetry_python_wifi.py
+                                             // sends a heartbeat every
+                                             // 100 ms, well under this)
+static uint32_t gLastSerial1RxMillis = 0;
+
+// Small non-blocking line accumulator -- used for BOTH Serial and Serial1
+// so neither channel can ever stall loop() waiting on bytes that haven't
+// arrived yet (Stream::readStringUntil() can block up to its timeout on a
+// partial line; at 500 Hz / 2 ms per cycle that's not acceptable here).
+struct LineReader {
+  char buf[64];
+  uint8_t len = 0;
+
+  // Returns true (with outLine filled + NUL-terminated) at most once per
+  // call, i.e. at most one complete line consumed per poll() -- bounded
+  // work per loop() iteration. Any remaining queued lines are picked up on
+  // the following iteration(s).
+  bool poll(Stream& s, char* outLine, size_t outSize) {
+    while (s.available()) {
+      const char c = (char)s.read();
+      if (c == '\n' || c == '\r') {
+        if (len == 0) { continue; }   // swallow CRLF / blank artifacts
+        buf[len] = '\0';
+        const uint8_t copyLen = (len < outSize - 1) ? len : (uint8_t)(outSize - 1);
+        memcpy(outLine, buf, copyLen);
+        outLine[copyLen] = '\0';
+        len = 0;
+        return true;
+      }
+      if (len < sizeof(buf) - 1) { buf[len++] = c; }
+      // else: line too long -- drop the overflow char, keep accumulating
+      // until the terminator so we resync on the next line.
+    }
+    return false;
+  }
+};
+
+static LineReader gUsbReader;
+static LineReader gLinkReader;
+
 
 // ----------------------------------------------------------------------------
-// SECTION 2b: STATE ESTIMATION (unchanged)
+// SECTION 2b: STATE ESTIMATION (unchanged from Stage4_FullLaw.ino)
 // ----------------------------------------------------------------------------
 
 struct IMUData {
@@ -141,47 +211,50 @@ void calculateState(const IMUData& imuData, float& theta, float& theta_dot) {
 // ----------------------------------------------------------------------------
 // SECTION 2c: TELEMETRY
 // ----------------------------------------------------------------------------
+// Both functions below now take the destination `Stream&` explicitly --
+// loop() picks Serial or Serial1 each cycle based on gLinkMode. Field
+// content/order is otherwise identical to Stage4_FullLaw.ino.
 
 // wheel_omega_lp: wheel_omega through a tau=5s low-pass -- the STANDING
 // wheel speed the Stage 4/5 checklists ask you to watch, with the
 // per-cycle noise/ripple averaged out.
-void printState(uint32_t t_ms, float theta, float theta_dot, float tau,
-                float tauCmd, bool armed, float gainScale, float wheelOmegaLp,
-                const Moteus::Query::Result& v) {
-  Serial.print(t_ms);
-  Serial.print('\t'); Serial.print(theta     * (float)RAD_TO_DEG, 2);
-  Serial.print('\t'); Serial.print(theta_dot * (float)RAD_TO_DEG, 2);
-  Serial.print('\t'); Serial.print(tau, 4);
-  Serial.print('\t'); Serial.print(tauCmd, 4);
-  Serial.print('\t'); Serial.print(armed ? 1 : 0);
-  Serial.print('\t'); Serial.print(gainScale, 2);
-  Serial.print('\t'); Serial.print(wheelOmegaLp, 3);
-  Serial.print('\t'); Serial.print(v.position, 3);
-  Serial.print('\t'); Serial.println(v.velocity, 3);
+void printState(Stream& out, uint32_t t_ms, float theta, float theta_dot,
+                float tau, float tauCmd, bool armed, float gainScale,
+                float wheelOmegaLp, const Moteus::Query::Result& v) {
+  out.print(t_ms);
+  out.print('\t'); out.print(theta     * (float)RAD_TO_DEG, 2);
+  out.print('\t'); out.print(theta_dot * (float)RAD_TO_DEG, 2);
+  out.print('\t'); out.print(tau, 4);
+  out.print('\t'); out.print(tauCmd, 4);
+  out.print('\t'); out.print(armed ? 1 : 0);
+  out.print('\t'); out.print(gainScale, 2);
+  out.print('\t'); out.print(wheelOmegaLp, 3);
+  out.print('\t'); out.print(v.position, 3);
+  out.print('\t'); out.println(v.velocity, 3);
 }
 
 // Same fields as printState() above, same order, but plain comma-separated
-// with no header/comment lines -- one clean line per cycle for either
-// telemetry_matlab.m or telemetry_python.py to parse with a simple
-// split-on-comma. Both scripts consume this exact same format.
-void telemetryPlot(uint32_t t_ms, float theta, float theta_dot, float tau,
-                   float tauCmd, bool armed, float gainScale,
+// with no header/comment lines -- one clean line per cycle for
+// telemetry_python_wifi.py (or telemetry_matlab.m / telemetry_python.py
+// over USB in t0/USB mode) to parse with a simple split-on-comma.
+void telemetryPlot(Stream& out, uint32_t t_ms, float theta, float theta_dot,
+                   float tau, float tauCmd, bool armed, float gainScale,
                    float wheelOmegaLp, const Moteus::Query::Result& v) {
-  Serial.print(t_ms);
-  Serial.print(','); Serial.print(theta     * (float)RAD_TO_DEG, 4);
-  Serial.print(','); Serial.print(theta_dot * (float)RAD_TO_DEG, 4);
-  Serial.print(','); Serial.print(tau, 6);
-  Serial.print(','); Serial.print(tauCmd, 6);
-  Serial.print(','); Serial.print(armed ? 1 : 0);
-  Serial.print(','); Serial.print(gainScale, 4);
-  Serial.print(','); Serial.print(wheelOmegaLp, 6);
-  Serial.print(','); Serial.print(v.position, 6);
-  Serial.print(','); Serial.println(v.velocity, 6);
+  out.print(t_ms);
+  out.print(','); out.print(theta     * (float)RAD_TO_DEG, 4);
+  out.print(','); out.print(theta_dot * (float)RAD_TO_DEG, 4);
+  out.print(','); out.print(tau, 6);
+  out.print(','); out.print(tauCmd, 6);
+  out.print(','); out.print(armed ? 1 : 0);
+  out.print(','); out.print(gainScale, 4);
+  out.print(','); out.print(wheelOmegaLp, 6);
+  out.print(','); out.print(v.position, 6);
+  out.print(','); out.println(v.velocity, 6);
 }
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2d: CONTROL — full law: k1 + k2 + k3
+// SECTION 2d: CONTROL — full law: k1 + k2 + k3 (unchanged from Stage4_FullLaw.ino)
 // ----------------------------------------------------------------------------
 
 static const float kK1 = -1.0998f;    // N*m / rad
@@ -192,7 +265,7 @@ static bool  gArmed     = false;
 static float gGainScale = 1.0f;   // already validated by the Stage 3 ramp
 
 static const float kMaxTilt    = 0.52f;
-static const float kMaxOmega   = 600.0f;
+static const float kMaxOmega   = 40.0f;
 static const float kTauMax     = 0.12f;
 static const float kTaperStart = 36.0f;
 
@@ -284,41 +357,71 @@ void commandWheel(float theta, float theta_dot, float wheel_omega) {
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2e: SERIAL COMMANDS
+// SECTION 2e: COMMANDS (from either Serial or Serial1)
 // ----------------------------------------------------------------------------
+// handleCommandLine() is the same a/g/o parsing Stage4_FullLaw.ino has,
+// plus 'h' (heartbeat/no-op -- see LineReader/gLastSerial1RxMillis above)
+// and 't' (link-mode select -- handled before this is even called, see
+// pollCommands() below). `echo` is whichever stream the line arrived on,
+// so a SERIALMONITORMODE ack goes back down the same channel it came in on.
+void handleCommandLine(const char* line, Stream& echo) {
+  if (line[0] == '\0') { return; }
 
-void handleSerialCommands() {
-  if (!Serial.available()) { return; }
-  String line = Serial.readStringUntil('\n');
-  line.trim();
-  if (line.length() == 0) { return; }
+  const char cmd = line[0];
+  const float val = atof(line + 1);
 
-  const char cmd = line.charAt(0);
-  const float val = line.substring(1).toFloat();
-
-  // Command handling itself always runs, in both telemetry modes -- only
-  // the "#" status echoes below are Serial-Monitor-mode only, so a
-  // PLOTMODE stream stays clean CSV even while you arm/disarm from a
-  // terminal.
   if (cmd == 'a') {
     gArmed = (val != 0.0f);
 #if TELEMETRY_MODE == SERIALMONITORMODE
-    Serial.print("# gArmed = "); Serial.println(gArmed ? "TRUE" : "FALSE");
+    echo.print("# gArmed = "); echo.println(gArmed ? "TRUE" : "FALSE");
 #endif
   } else if (cmd == 'g') {
     gGainScale = val < 0.0f ? 0.0f : (val > 1.0f ? 1.0f : val);
 #if TELEMETRY_MODE == SERIALMONITORMODE
-    Serial.print("# gGainScale = "); Serial.println(gGainScale, 3);
+    echo.print("# gGainScale = "); echo.println(gGainScale, 3);
 #endif
   } else if (cmd == 'o') {
     kThetaOffset = val * (float)DEG_TO_RAD;
 #if TELEMETRY_MODE == SERIALMONITORMODE
-    Serial.print("# kThetaOffset = "); Serial.print(val, 4); Serial.println(" deg");
+    echo.print("# kThetaOffset = "); echo.print(val, 4); echo.println(" deg");
 #endif
+  } else if (cmd == 'h') {
+    // heartbeat / no-op -- receipt alone is enough (see pollCommands()).
 #if TELEMETRY_MODE == SERIALMONITORMODE
   } else {
-    Serial.println("# unknown. use: a<0/1>  g<0..1>  o<deg>");
+    echo.println("# unknown. use: a<0/1>  g<0..1>  o<deg>  t<0/1>  h");
 #endif
+  }
+}
+
+// Polls BOTH Serial and Serial1 every loop() iteration -- see the
+// LineReader comment above for why this can never block. 't'-prefixed
+// lines switch gLinkMode locally and are NOT passed to handleCommandLine();
+// everything else (a/g/o/h) is, regardless of which stream it arrived on.
+void pollCommands() {
+  static char lineBuf[64];
+
+  if (gUsbReader.poll(Serial, lineBuf, sizeof(lineBuf))) {
+    if (lineBuf[0] == 't') {
+      const LinkMode newMode = (lineBuf[1] != '0') ? LinkMode::WIFI : LinkMode::USB;
+      if (newMode == LinkMode::WIFI && gLinkMode != LinkMode::WIFI) {
+        gLastSerial1RxMillis = millis();   // fresh grace period on entry
+      }
+      gLinkMode = newMode;
+    } else {
+      handleCommandLine(lineBuf, Serial);
+    }
+  }
+
+  if (gLinkReader.poll(Serial1, lineBuf, sizeof(lineBuf))) {
+    gLastSerial1RxMillis = millis();   // any line at all counts as link-alive
+    if (lineBuf[0] == 't') {
+      const LinkMode newMode = (lineBuf[1] != '0') ? LinkMode::WIFI : LinkMode::USB;
+      gLinkMode = newMode;   // already just heard from Serial1, so no need
+                              // to reset the grace period here
+    } else {
+      handleCommandLine(lineBuf, Serial1);
+    }
   }
 }
 
@@ -330,8 +433,16 @@ void handleSerialCommands() {
 void setup() {
 
   Serial.begin(115200);
-  while (!Serial) {}
-  Serial.println("started - STAGE 4: FULL LAW (panel held by hand)");
+  // Bounded wait, NOT while(!Serial){} -- Stage4_FullLaw.ino's USB-tethered
+  // build can afford to hang here since a laptop is always attached; this
+  // WiFi build must still boot into WIFI mode with nothing on USB at all.
+  uint32_t usbWaitStart = millis();
+  while (!Serial && millis() - usbWaitStart < 3000) { delay(10); }
+
+  Serial1.begin(kLinkBaud);
+  gLastSerial1RxMillis = millis();
+
+  Serial.println("\nstarted - STAGE 4: FULL LAW (WiFi build, panel held by hand)");
 
   const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
   while (errorCode != 0) {
@@ -362,6 +473,7 @@ void setup() {
   Serial.println("t_ms\ttheta_deg\ttheta_dot_dps\ttau_Nm\ttau_cmd_Nm\tarmed\t"
                   "gain_scale\twheel_omega_lp\twheel_pos\twheel_vel");
   Serial.println("# STARTS DISARMED. Send a1 to arm. o<deg> sets mount offset.");
+  Serial.println("# t0 = USB link mode, t1 = WiFi link mode (default t1).");
 #endif
 
   gNextSendMillis = millis();
@@ -375,7 +487,15 @@ void setup() {
 
 void loop() {
 
-  handleSerialCommands();
+  pollCommands();
+
+  // WiFi-mode link watchdog -- only enforced in WIFI mode, mirrors what an
+  // explicit a0 does. USB mode never auto-disarms from this (matches
+  // Stage4_FullLaw.ino: only a0 or the control law's own safety trips do).
+  if (gLinkMode == LinkMode::WIFI && gArmed &&
+      millis() - gLastSerial1RxMillis > kLinkTimeoutMs) {
+    gArmed = false;
+  }
 
   if (static_cast<int32_t>(millis() - gNextSendMillis) < 0) { return; }
   gNextSendMillis += kPeriodMs;
@@ -395,12 +515,13 @@ void loop() {
   // --- control + command ---
   commandWheel(theta, theta_dot, wheel_omega);
 
-  // --- telemetry ---
+  // --- telemetry: goes to Serial or Serial1 depending on gLinkMode ---
+  Stream& out = (gLinkMode == LinkMode::WIFI) ? (Stream&)Serial1 : (Stream&)Serial;
 #if TELEMETRY_MODE == PLOTMODE
-  telemetryPlot(time, theta, theta_dot, gLastTau, gLastTauCmd, gArmed,
+  telemetryPlot(out, time, theta, theta_dot, gLastTau, gLastTauCmd, gArmed,
                 gGainScale, gWheelOmegaLp, v);
 #else
-  printState(time, theta, theta_dot, gLastTau, gLastTauCmd, gArmed,
+  printState(out, time, theta, theta_dot, gLastTau, gLastTauCmd, gArmed,
              gGainScale, gWheelOmegaLp, v);
 #endif
 
@@ -410,8 +531,13 @@ void loop() {
 // ============================================================================
 // NOTES
 // ----------------------------------------------------------------------------
-// Next: Stage5_Release/Stage5_Release.ino -- same control law, panel let go
-// with rails and an e-stop in place. Expect recovery from 7-9 deg (below
-// the 11-12 deg ideal in the Build Guide -- quantisation, noise, delay and
-// friction all consume margin on real hardware).
+// Companion files:
+//   firmware/XIAO/xiao_teensy_bridge/xiao_teensy_bridge.ino  -- the XIAO
+//     ESP32C6 sketch that relays Serial1 <-> UDP.
+//   matlab/2Dmodel/Validation/telemetry_python_wifi.py  -- the PC-side
+//     viewer/logger/command console for this build (UDP instead of a
+//     direct COM port).
+// Stage4_FullLaw.ino, xiao_esp32c6_wifi_test1.ino, xiao_laptop_listener1.py,
+// telemetry_python.py and telemetry_matlab.m are all untouched by this and
+// remain the USB-tethered / standalone-WiFi-test reference versions.
 // ============================================================================

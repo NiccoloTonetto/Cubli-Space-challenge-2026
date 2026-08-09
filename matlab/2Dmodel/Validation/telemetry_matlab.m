@@ -1,14 +1,14 @@
 % telemetry_matlab.m
 %
 % Live telemetry viewer + logger for Stage4_FullLaw.ino running with
-% TELEMETRY_MODE set to TELEMETRY_MATLAB (see the selector near the top
+% TELEMETRY_MODE set to PLOTMODE (see the selector near the top
 % of Stage4_FullLaw.ino). In that mode the Teensy sends one plain CSV
 % line per control cycle, no header/comment lines:
 %
 %   t_ms,theta_deg,theta_dot_dps,tau_Nm,tau_cmd_Nm,armed,gain_scale,wheel_omega_lp,wheel_pos,wheel_vel
 %
 % Usage:
-%   1. In Stage4_FullLaw.ino, set TELEMETRY_MODE to TELEMETRY_MATLAB and
+%   1. In Stage4_FullLaw.ino, set TELEMETRY_MODE to PLOTMODE and
 %      re-upload.
 %   2. Set PORT below to the Teensy's serial port (Windows: check Device
 %      Manager -> Ports, e.g. "COM5").
@@ -34,7 +34,7 @@ configureTerminator(sp, "LF");
 flush(sp);
 
 %% ---- figure ----
-fig = uifigure("Name", "Stage4 Telemetry (MATLAB mode)");
+fig = uifigure("Name", "Stage4 Telemetry (PLOTMODE)");
 fig.UserData.stop = false;
 fig.CloseRequestFcn = @(src, evt) setStop(src);
 

@@ -1,70 +1,81 @@
-"""telemetry_python.py
+"""telemetry_python_wifi.py
 
-Live telemetry viewer + logger for Stage4_FullLaw.ino running with
-TELEMETRY_MODE set to PLOTMODE (see the selector near the top of
-Stage4_FullLaw.ino). In that mode the Teensy sends one plain CSV line per
-control cycle, no header/comment lines:
+WiFi/UDP counterpart to telemetry_python.py, for
+Stage4_FullLaw_WiFi/Stage4_FullLaw_WiFi.ino + firmware/XIAO/
+xiao_teensy_bridge/xiao_teensy_bridge.ino instead of a USB-tethered
+Teensy. Same PLOTMODE CSV wire format, same three-panel live scrolling
+plot (tilt / torque / wheel), same behavior of saving the full session to
+a timestamped .csv next to this script when the window is closed -- only
+the transport changed from a COM port to a UDP socket:
 
     t_ms,theta_deg,theta_dot_dps,tau_Nm,tau_cmd_Nm,armed,gain_scale,wheel_omega_lp,wheel_pos,wheel_vel
 
-Python equivalent of telemetry_matlab.m in this same folder -- same
-settings block, same three-panel live scrolling plot (tilt / torque /
-wheel), same behavior of saving the full session to a timestamped .csv
-next to this script when the window is closed.
+telemetry_python.py, telemetry_matlab.m, and Stage4_FullLaw.ino are all
+untouched and still work exactly as before over USB -- this is a separate
+script for the separate WiFi-enabled build.
 
 Serial is read on a background thread into a queue; the main thread only
-runs matplotlib's own FuncAnimation + plt.show() loop. Doing the blocking
-serial I/O and the GUI redraw in the same loop (as an earlier version of
-this script did) starves the window's message pump under Windows and it
-gets flagged "(Not Responding)" -- this split keeps the GUI thread free to
-service its event loop continuously.
+runs matplotlib's own FuncAnimation + plt.show() loop -- same reasoning as
+telemetry_python.py (blocking I/O and GUI redraw in the same loop starves
+the window's message pump under Windows).
 
-A serial port can only be opened by one process at a time, so the Arduino
-Serial Monitor can't also connect while this script has the port open.
-Since this script already owns the connection, it doubles as the command
-console too: type the same commands the firmware's handleSerialCommands()
+This script doubles as the command console, same as telemetry_python.py:
+type the same commands Stage4_FullLaw_WiFi.ino's handleCommandLine()
 understands (a1, a0, g<0..1>, o<deg>) into the terminal you launched this
-script from and press Enter -- they're forwarded straight to the Teensy.
+script from and press Enter -- they're sent as UDP packets to the XIAO.
+Two new commands specific to this build:
+    t0 / t1   -- switch the Teensy's link mode (USB / WiFi) live, no reboot
+    x0 / x1   -- switch the XIAO's own mode (WIFI_TEST / TEENSY_BRIDGE)
+A background thread also sends a lightweight "h" heartbeat every
+HEARTBEAT_INTERVAL_S seconds -- Stage4_FullLaw_WiFi.ino auto-disarms if it
+doesn't hear anything on its WiFi link for kLinkTimeoutMs (300 ms in the
+firmware), so this keeps idle periods between real commands from tripping
+that failsafe. It also keeps the XIAO's learned "laptop address" fresh,
+since xiao_teensy_bridge.ino only knows where to send telemetry once it's
+heard from this script at least once.
 
-Requires: pip install pyserial matplotlib
+Requires: pip install matplotlib   (no pyserial needed -- plain UDP socket)
 
 Usage:
-    1. In Stage4_FullLaw.ino, set TELEMETRY_MODE to PLOTMODE and
-       re-upload.
-    2. Set PORT below to the Teensy's serial port (Windows: check Device
-       Manager -> Ports, e.g. "COM9").
-    3. Run this script. A window opens with a live scrolling plot.
+    1. In Stage4_FullLaw_WiFi.ino, TELEMETRY_MODE should be PLOTMODE
+       (it is by default).
+    2. Set XIAO_IP below to the XIAO's static IP (must match XIAO_IP in
+       xiao_teensy_bridge.ino).
+    3. Run this script. A window opens with a live scrolling plot once the
+       XIAO has heard the first heartbeat and starts relaying telemetry.
     4. In the terminal (not the plot window), type commands like a1, g0.5,
-       o-2.3 and press Enter to send them to the Teensy.
+       o-2.3, t0, x1 and press Enter to send them.
     5. Close the window when you're done -- the full session is saved to
        a timestamped .csv file next to this script.
 """
 
 import csv
 import queue
+import socket
 import threading
 import time
 from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import serial
 from matplotlib.animation import FuncAnimation
 
 # ---- settings ----
-PORT = "COM9"       # <-- set to your Teensy's port
-BAUD = 115200
+XIAO_IP   = "10.11.250.89"   # <-- must match XIAO_IP in xiao_teensy_bridge.ino
+XIAO_PORT = 4210             # <-- must match UDP_PORT in xiao_teensy_bridge.ino
+LOCAL_PORT = 4210            # local port this script listens on
 NUM_COLS = 10
 WINDOW_S = 10        # seconds visible in the scrolling plot
 REDRAW_MS = 50       # plot redraw period (~20 fps)
+HEARTBEAT_INTERVAL_S = 0.1   # keep well under the firmware's kLinkTimeoutMs (300 ms)
 OUT_DIR = Path(__file__).resolve().parent
 
 COL_NAMES = ["t_ms", "theta_deg", "theta_dot_dps", "tau_Nm", "tau_cmd_Nm",
              "armed", "gain_scale", "wheel_omega_lp", "wheel_pos", "wheel_vel"]
 
 
-def reader_thread(ser, q, stop_event):
-    """Blocking serial reads live entirely on this thread -- the GUI thread
+def reader_thread(sock, q, stop_event):
+    """Blocking recvfrom() lives entirely on this thread -- the GUI thread
     never waits on I/O, so it can keep servicing its event loop."""
     last_valid = time.monotonic()
     last_warn = 0.0
@@ -72,18 +83,21 @@ def reader_thread(ser, q, stop_event):
     last_armed = None   # PLOTMODE suppresses the "# gArmed = TRUE" echo, so
                          # this is the only confirmation a1/a0 landed -- and
                          # it also catches the control law self-disarming on
-                         # a safety trip (overtilt/overspeed/NaN).
+                         # a safety trip (overtilt/overspeed/NaN/link-loss).
 
     while not stop_event.is_set():
-        raw = ser.readline()
-        if not raw:
+        try:
+            raw, _addr = sock.recvfrom(2048)
+        except socket.timeout:
             now = time.monotonic()
             if now - last_valid > 2.0 and now - last_warn > 2.0:
                 last_warn = now
                 print("... no valid PLOTMODE lines in the last 2s -- check "
-                      "that Stage4_FullLaw.ino's TELEMETRY_MODE is set to "
-                      "PLOTMODE (re-upload after changing it), and that "
-                      "PORT/BAUD above match the Teensy.")
+                      "that Stage4_FullLaw_WiFi.ino's TELEMETRY_MODE is set "
+                      "to PLOTMODE and its link mode is t1 (WiFi), that "
+                      "xiao_teensy_bridge.ino is in x1 (TEENSY_BRIDGE) mode, "
+                      "and that XIAO_IP/XIAO_PORT above match the XIAO. This "
+                      "also fires on a genuine WiFi link loss.")
             continue
 
         line = raw.decode("ascii", errors="ignore").strip()
@@ -94,7 +108,7 @@ def reader_thread(ser, q, stop_event):
         if len(parts) != NUM_COLS:
             if not warned_bad_shape:
                 warned_bad_shape = True
-                print(f"Got a line but it isn't {NUM_COLS}-field PLOTMODE "
+                print(f"Got a packet but it isn't {NUM_COLS}-field PLOTMODE "
                       f"CSV ({len(parts)} fields): {line!r}")
                 print("If that looks tab-delimited or has a header/'#' "
                       "text, the firmware is still in SERIALMONITORMODE.")
@@ -114,10 +128,11 @@ def reader_thread(ser, q, stop_event):
         q.put(vals)
 
 
-def command_thread(ser, stop_event):
-    """Forwards lines typed in this terminal straight to the Teensy -- the
-    same a<0/1> / g<0..1> / o<deg> commands handleSerialCommands() already
-    understands. Runs on its own thread since input() blocks."""
+def command_thread(sock, xiao_addr, stop_event):
+    """Forwards lines typed in this terminal as UDP packets to the XIAO --
+    the same a<0/1> / g<0..1> / o<deg> commands handleCommandLine()
+    understands, plus t<0/1> (Teensy link mode) and x<0/1> (XIAO mode).
+    Runs on its own thread since input() blocks."""
     while not stop_event.is_set():
         try:
             line = input()
@@ -126,27 +141,42 @@ def command_thread(ser, stop_event):
         line = line.strip()
         if not line:
             continue
-        ser.write((line + "\n").encode("ascii"))
+        sock.sendto((line + "\n").encode("ascii"), xiao_addr)
+
+
+def heartbeat_thread(sock, xiao_addr, stop_event):
+    """Keeps the firmware's WiFi-link watchdog alive and the XIAO's
+    learned laptop address fresh during idle periods between commands."""
+    while not stop_event.is_set():
+        sock.sendto(b"h\n", xiao_addr)
+        stop_event.wait(HEARTBEAT_INTERVAL_S)
 
 
 def main():
-    ser = serial.Serial(PORT, BAUD, timeout=0.1)
-    ser.reset_input_buffer()
-    print(f"Opened {PORT} @ {BAUD} baud. Waiting for PLOTMODE data "
-          f"({NUM_COLS} comma-separated fields per line)...")
+    xiao_addr = (XIAO_IP, XIAO_PORT)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("0.0.0.0", LOCAL_PORT))
+    sock.settimeout(1.0)
+    print(f"Listening on UDP :{LOCAL_PORT}, sending to {XIAO_IP}:{XIAO_PORT}. "
+          f"Waiting for PLOTMODE data ({NUM_COLS} comma-separated fields per packet)...")
 
     q = queue.Queue()
     stop_event = threading.Event()
-    thread = threading.Thread(target=reader_thread, args=(ser, q, stop_event), daemon=True)
+
+    thread = threading.Thread(target=reader_thread, args=(sock, q, stop_event), daemon=True)
     thread.start()
 
-    cmd_thread = threading.Thread(target=command_thread, args=(ser, stop_event), daemon=True)
+    cmd_thread = threading.Thread(target=command_thread, args=(sock, xiao_addr, stop_event), daemon=True)
     cmd_thread.start()
-    print("Type a1 / a0 / g<0..1> / o<deg> and press Enter to send to the "
-          "Teensy (same commands as the Serial Monitor).")
+
+    hb_thread = threading.Thread(target=heartbeat_thread, args=(sock, xiao_addr, stop_event), daemon=True)
+    hb_thread.start()
+
+    print("Type a1 / a0 / g<0..1> / o<deg> / t<0/1> / x<0/1> and press Enter "
+          "to send to the XIAO.")
 
     fig_theta, ax_theta = plt.subplots(figsize=(7, 4))
-    fig_theta.canvas.manager.set_window_title("Stage4 Telemetry (PLOTMODE) - Theta")
+    fig_theta.canvas.manager.set_window_title("Stage4 Telemetry (WiFi/PLOTMODE) - Theta")
     ax_theta.set_title("Tilt (theta)"); ax_theta.set_ylabel("deg"); ax_theta.set_xlabel("t (s)")
     ax_theta.set_ylim(-30, 30)
     (lTheta,) = ax_theta.plot([], [], color="C0", label="theta (deg)")
@@ -154,14 +184,14 @@ def main():
                               ha="right", va="top", fontsize=12, color="C0", fontweight="bold")
 
     fig_thetadot, ax_thetadot = plt.subplots(figsize=(7, 4))
-    fig_thetadot.canvas.manager.set_window_title("Stage4 Telemetry (PLOTMODE) - Theta dot")
+    fig_thetadot.canvas.manager.set_window_title("Stage4 Telemetry (WiFi/PLOTMODE) - Theta dot")
     ax_thetadot.set_title("Tilt rate (theta dot)"); ax_thetadot.set_ylabel("deg/s"); ax_thetadot.set_xlabel("t (s)")
     (lThetaDot,) = ax_thetadot.plot([], [], color="C1", label="theta dot (deg/s)")
     txtThetaDot = ax_thetadot.text(0.98, 0.95, "", transform=ax_thetadot.transAxes,
                                     ha="right", va="top", fontsize=12, color="C1", fontweight="bold")
 
     fig, (ax2, ax3) = plt.subplots(2, 1, sharex=True, figsize=(9, 6))
-    fig.canvas.manager.set_window_title("Stage4 Telemetry (PLOTMODE) - Torque & Wheel")
+    fig.canvas.manager.set_window_title("Stage4 Telemetry (WiFi/PLOTMODE) - Torque & Wheel")
     ax2.set_title("Torque"); ax2.set_ylabel("N*m")
     ax3.set_title("Wheel");  ax3.set_ylabel("rad/s"); ax3.set_xlabel("t (s)")
 
@@ -254,7 +284,7 @@ def main():
 
     stop_event.set()
     thread.join(timeout=1.0)
-    ser.close()
+    sock.close()
 
     rows = log["rows"]
     if rows:
