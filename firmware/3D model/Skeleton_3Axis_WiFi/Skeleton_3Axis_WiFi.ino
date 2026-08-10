@@ -1,20 +1,52 @@
 // ============================================================================
-// TEENSY 4.1 + 3x moteus-n1 (CAN3) + BMI270 IMU (SPI) — 3D SKELETON
+// TEENSY 4.1 + 3x moteus-n1 (CAN3) + BMI270 IMU (SPI) — 3D SKELETON (WiFi)
 // ============================================================================
-// ARCHITECTURE ONLY. Mirrors the section layout, telemetry-mode selector,
-// serial-command interface, and CAN/IMU boilerplate of
-// "firmware/2D model/panel-bringup/Stage4_FullLaw/Stage4_FullLaw.ino",
-// extended from ONE reaction wheel + a single tilt angle to THREE reaction
-// wheels (nominally one per body axis) + a full 3D attitude.
+// Same architecture, estimator stub, control stub, and IMU mount transform
+// as Skeleton_3Axis.ino -- this file does NOT change any of that physics/
+// estimator/control code. It only adds a second telemetry/command channel
+// (Serial1, wired to a XIAO ESP32C6 running
+// firmware/XIAO/xiao_teensy_bridge/xiao_teensy_bridge.ino) so the cube can
+// run untethered from USB, mirroring
+// "firmware/2D model/panel-bringup/Stage4_FullLaw_WiFi/Stage4_FullLaw_WiFi.ino".
 //
-// calculateState() and commandWheels() are intentionally EMPTY STUBS -- see
-// the TODOs inside each. Everything else (CAN setup, IMU setup, per-wheel
-// torque command send, telemetry, serial commands) is wired the same way
-// the 2D sketch wires it, just generalized from 1 wheel to 3.
+// Skeleton_3Axis.ino itself is intentionally left untouched -- it remains
+// the plain USB-tethered reference/fallback build. This is a parallel file.
 //
-// Does NOT compile into a bring-up stage yet -- there is no Stage 0-5
-// sequence for 3D defined. This is the starting point that sequence will
-// be built on top of, once calculateState()/commandWheels() are written.
+// --------------------------- LINK MODE ---------------------------
+// gLinkMode selects which stream (Serial = USB, Serial1 = XIAO) is used for
+// telemetry OUT and is watched for the WiFi-link watchdog. It does NOT gate
+// which stream commands are read FROM -- both Serial and Serial1 are always
+// polled for incoming lines, every loop() iteration, so a mode-switch
+// command is never missed. Switch it live with:
+//   t0   -> USB mode   (telemetry/watchdog on Serial)
+//   t1   -> WiFi mode  (telemetry/watchdog on Serial1)      [boot default]
+// Recognized on EITHER stream.
+//
+// --------------------------- COMMAND GRAMMAR: 'h' COLLISION -------------
+// The 2D WiFi build (Stage4_FullLaw_WiFi.ino) uses 'h' as a no-op heartbeat
+// to keep the WiFi-link watchdog alive during idle periods. This sketch
+// CANNOT reuse that: Skeleton_3Axis.ino already defines 'h' as HALT (idle +
+// force-disarm, see SECTION 2e) -- an untethered PC script sending a 2D-style
+// "h" heartbeat here would silently halt and disarm the cube instead of
+// doing nothing. So the halt semantics of 'h' are kept EXACTLY as in
+// Skeleton_3Axis.ino, and a separate no-op heartbeat command, 'k'
+// (keepalive), is added instead. Any line at all (not just 'k') already
+// refreshes the watchdog -- see pollCommands() -- so 'k' only matters during
+// stretches with no other traffic; the PC-side WiFi telemetry script for
+// this sketch must send "k" (not "h") as its periodic keepalive.
+//
+// Wiring to the XIAO (see xiao_teensy_bridge.ino):
+//   Teensy Serial1 TX1 (pin 1)  -> XIAO D7 (RX)
+//   Teensy Serial1 RX1 (pin 0)  <- XIAO D6 (TX)
+//   Common GND between the two boards.
+//   Serial1.begin(1000000, ...) -- 1 Mbaud. A full PLOTMODE CSV line here
+//   carries ~18 fields (quaternion + 3-axis rate + 3 torques + armed/gain +
+//   3x wheel pos/vel) vs the 2D build's 9 -- still comfortably under 1 Mbaud
+//   at 500 Hz, but worth a bandwidth sanity check once running.
+//
+// Does NOT compile into a bring-up stage yet, same as Skeleton_3Axis.ino --
+// calculateState()/commandWheels() are still empty stubs. See that file's
+// NOTES section for the pre-hardware checklist; it applies here unchanged.
 // ============================================================================
 
 
@@ -30,15 +62,14 @@
 // ----------------------------------------------------------------------------
 // SECTION 1b: TELEMETRY MODE SELECTOR
 // ----------------------------------------------------------------------------
-// Same pattern as the 2D Stage4 sketch.
 // SERIALMONITORMODE: human-readable, tab-delimited, with header + "#"
-//                     status lines -- for reading directly in the Arduino
-//                     Serial Monitor.
+//                     status lines -- for reading directly in a Serial
+//                     Monitor (USB or, over the link, whatever terminal the
+//                     XIAO's UDP bridge feeds into).
 // PLOTMODE:           plain CSV, one line per control cycle, no header/
 //                      comment lines -- for a matlab/3Dmodel/Validation
 //                      live-plot script (TODO, mirror
-//                      matlab/2Dmodel/Validation/telemetry_matlab.m or
-//                      telemetry_python.py -- both read the same format).
+//                      matlab/2Dmodel/Validation/telemetry_python_wifi.py).
 // Change the line below and re-upload to switch modes.
 #define SERIALMONITORMODE 0
 #define PLOTMODE 1
@@ -81,17 +112,62 @@ const uint32_t kPeriodMs = 2;   // 500 Hz
 static uint32_t gNextSendMillis = 0;
 
 static bool gHalted = false;
-// Software pause -- see SECTION 2e. Same semantics as the 2D sketch: does
-// NOT stop loop() on its own, force-disarms, and does not auto-resume
-// armed on "h0" -- a fresh "a1" is still required.
+// Software pause -- see SECTION 2e. Does NOT stop loop() on its own, force-
+// disarms, and does not auto-resume armed on "h0" -- a fresh "a1" is still
+// required. Same semantics as Skeleton_3Axis.ino -- NOT reused as a WiFi
+// heartbeat, see the header note above.
+
+// ---------------- Link mode + command channels ----------------
+enum class LinkMode : uint8_t { USB = 0, WIFI = 1 };
+static LinkMode gLinkMode = LinkMode::WIFI;   // boot default -- see header
+
+const uint32_t kLinkBaud      = 1000000;   // Serial1 <-> XIAO
+const uint32_t kLinkTimeoutMs = 300;       // auto-disarm if WIFI mode and no
+                                            // Serial1 line in this long
+static uint32_t gLastSerial1RxMillis = 0;
+
+// Small non-blocking line accumulator -- used for BOTH Serial and Serial1 so
+// neither channel can ever stall loop() waiting on bytes that haven't
+// arrived yet (Stream::readStringUntil() can block up to its timeout on a
+// partial line; at 500 Hz / 2 ms per cycle that's not acceptable here).
+struct LineReader {
+  char buf[64];
+  uint8_t len = 0;
+
+  // Returns true (with outLine filled + NUL-terminated) at most once per
+  // call, i.e. at most one complete line consumed per poll() -- bounded
+  // work per loop() iteration. Any remaining queued lines are picked up on
+  // the following iteration(s).
+  bool poll(Stream& s, char* outLine, size_t outSize) {
+    while (s.available()) {
+      const char c = (char)s.read();
+      if (c == '\n' || c == '\r') {
+        if (len == 0) { continue; }   // swallow CRLF / blank artifacts
+        buf[len] = '\0';
+        const uint8_t copyLen = (len < outSize - 1) ? len : (uint8_t)(outSize - 1);
+        memcpy(outLine, buf, copyLen);
+        outLine[copyLen] = '\0';
+        len = 0;
+        return true;
+      }
+      if (len < sizeof(buf) - 1) { buf[len++] = c; }
+      // else: line too long -- drop the overflow char, keep accumulating
+      // until the terminator so we resync on the next line.
+    }
+    return false;
+  }
+};
+
+static LineReader gUsbReader;
+static LineReader gLinkReader;
 
 
 // ----------------------------------------------------------------------------
 // SECTION 2b: STATE ESTIMATION (calculateState() is a STUB -- see TODO)
 // ----------------------------------------------------------------------------
+// Unchanged from Skeleton_3Axis.ino -- IMU mount transform + calibration are
+// identical, see that file for the full derivation/comments.
 
-// Unchanged from the 2D sketch -- the BMI270 is still just a 6-axis IMU
-// regardless of how many wheels read it.
 struct IMUData {
   float ax, ay, az;
   float wx, wy, wz;
@@ -108,46 +184,27 @@ static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
 // ----------------------------------------------------------------------------
 // IMU MOUNT TRANSFORM: sensor frame -> body/geometric-centre frame
 // ----------------------------------------------------------------------------
-// Two independent corrections, applied in readIMU() after calibration:
-//   1. ROTATION    -- the IMU is mounted at a fixed skew angle. gMountDCM
-//                      rotates sensor-axis readings into body axes.
-//   2. TRANSLATION -- the IMU is not exactly at the cube's geometric centre
-//                      G. gLeverArmM corrects the ACCELEROMETER only for
-//                      that offset (the gyro needs no correction -- angular
-//                      velocity is identical at every point of a rigid
-//                      body, so there is no lever-arm term for it).
-//
-// Mounting sequence: intrinsic Z -> X -> Z (theta1 about sensor z, theta2
-// about the resulting x, theta3 about the resulting z). gMountDCM is the
-// coordinate-transformation matrix C = Rz(theta3)*Rx(theta2)*Rz(theta1),
-// expanded to closed form in updateMountingDCM() -- do not multiply the
-// elementary matrices at runtime, and do not transpose the result.
-//
-// gTheta1Deg/gTheta2Deg/gTheta3Deg below are the EXACT equivalent of this
-// mount's known geometry: the IMU sits at the cube's centre with sensor Z
-// toward corner G=(1,1,1) and sensor X through the FB/DH edge midpoints.
-// theta1=0, theta2=acos(1/sqrt(3))=54.7356 deg (the cube space-diagonal
-// half-angle), theta3=45. Verified by hand against the direct unit-vector
-// derivation -- reproduces it exactly, so this parametrization changes
-// NOTHING about current behaviour; it only makes the mount angle
-// runtime-tunable and adds lever-arm support. Re-measure and call
-// setMountingAngles()/setLeverArm() if the assembled mount ever deviates
-// from this ideal corner geometry.
-//
-// GIMBAL LOCK: this Z-X-Z sequence is degenerate at theta2 = 0 or 180 deg,
-// where theta1 and theta3 become indistinguishable. 54.7356 deg is nowhere
-// near either, so this is not a live concern for the default mount -- but
-// don't retune theta2 toward 0/180 without accounting for it.
+// See Skeleton_3Axis.ino for the full derivation. Summary: two independent
+// corrections applied in readIMU() after calibration --
+//   1. ROTATION    -- gMountDCM rotates sensor-axis readings into body axes
+//                      (intrinsic Z-X-Z mount sequence).
+//   2. TRANSLATION -- gLeverArmM corrects the ACCELEROMETER only for the
+//                      IMU not sitting exactly at the geometric centre G
+//                      (the gyro needs no correction -- angular velocity is
+//                      identical at every point of a rigid body).
+// gTheta1Deg/gTheta2Deg/gTheta3Deg = 0, 54.7356, 45 are the EXACT equivalent
+// of this mount's known corner geometry (sensor Z toward corner G, sensor X
+// through the FB/DH edge midpoints) -- changes nothing about current
+// behaviour, just makes the mount angle runtime-tunable and adds lever-arm
+// support. GIMBAL LOCK at theta2 = 0/180 deg -- not a concern at 54.7356.
 float gTheta1Deg = 0.0f;
 float gTheta2Deg = 54.7356f;
 float gTheta3Deg = 45.0f;
 
 // Lever arm: IMU origin -> geometric centre G, in BODY axes [m]. TODO:
-// currently unmeasured -- the IMU is assumed to sit AT the geometric
-// centre (matches the mount description above), so this is left at zero
-// until a real physical offset is measured. Direction matters: this is
-// FROM the IMU TO G, not the other way -- reversing it flips the sign of
-// every correction term. With this at zero both lever-arm terms below are
+// currently unmeasured -- IMU assumed to sit AT the geometric centre, so
+// this is left at zero until a real physical offset is measured. Direction
+// matters: FROM the IMU TO G. At zero, both lever-arm terms below are
 // exactly zero, so leaving it unmeasured is safe, not just "close enough."
 float gLeverArmM[3] = { 0.0f, 0.0f, 0.0f };
 
@@ -271,9 +328,7 @@ void transformToGeometricCentre(const float aImu[3], const float wImu[3],
 
 // Essential -- unit conversion + calibration (sensor frame), then rotation
 // + lever-arm correction into body/geometric-centre frame via
-// transformToGeometricCentre() above. calculateState() below now receives
-// genuinely body-frame, centre-corrected accel/gyro, not raw sensor-frame
-// readings.
+// transformToGeometricCentre() above.
 IMUData readIMU(BMI270& sensor) {
   const float aImu[3] = {
     (sensor.data.accelX * kG0 - kAccelOffset[0]) / kAccelScale[0],
@@ -298,25 +353,22 @@ IMUData readIMU(BMI270& sensor) {
 // Full 3D attitude + body rate, replacing the 2D sketch's single
 // (theta, theta_dot) pair.
 // TODO: attitude representation below is a placeholder (quaternion,
-// body-to-world, convention TBD) -- revisit if Euler angles turn out to
-// be a better fit for the eventual control law.
+// body-to-world, convention TBD) -- revisit if Euler angles turn out to be
+// a better fit for the eventual control law.
 struct AttitudeState {
   float q[4];   // attitude quaternion: q[0..3], TODO: confirm (w,x,y,z) vs (x,y,z,w) convention
   float w[3];   // body angular rate, rad/s: w[0]=wx, w[1]=wy, w[2]=wz
 };
 
 // TODO: 3D attitude/rate estimation from the 6-axis IMU data -- e.g. a
-// quaternion complementary filter, Madgwick/Mahony, or an EKF. Mirrors
-// calculateState() in the 2D Stage4 sketch (accel-angle + gyro
-// complementary filter for a single theta/theta_dot), extended to a full
-// 3D attitude. NOTE: a 6-axis IMU alone cannot observe yaw from
-// accelerometer -- decide how (or whether) yaw is estimated/controlled
-// before implementing this.
+// quaternion complementary filter, Madgwick/Mahony, or an EKF. NOTE: a
+// 6-axis IMU alone cannot observe yaw from accelerometer -- decide how (or
+// whether) yaw is estimated/controlled before implementing this.
 //
-// Input:  imuData  -- calibrated accel (m/s^2) + gyro (rad/s), from readIMU().
+// Input:  imuData  -- calibrated, body-frame, centre-corrected accel (m/s^2)
+//                      + gyro (rad/s), from readIMU().
 // Output: state    -- updated in place (in/out -- carries the previous
-//                      estimate in, like the 2D sketch's static theta/
-//                      theta_dot, so the filter has memory across calls).
+//                      estimate in, so the filter has memory across calls).
 //
 // Safe placeholder until implemented: identity attitude, gyro passed
 // through unfiltered.
@@ -331,51 +383,50 @@ void calculateState(const IMUData& imuData, AttitudeState& state) {
 // ----------------------------------------------------------------------------
 // SECTION 2c: TELEMETRY
 // ----------------------------------------------------------------------------
+// Both functions below now take the destination `Stream&` explicitly --
+// loop() picks Serial or Serial1 each cycle based on gLinkMode. Field
+// content/order is otherwise identical to Skeleton_3Axis.ino.
 
-// Same idea as the 2D sketch's printState(): one line per control cycle.
-// Columns: t_ms, attitude quaternion (q0..q3), body rate (wx/wy/wz, dps),
-// commanded torque per wheel (tau_x/y/z), armed, gain_scale, then
-// position/velocity per wheel (as reported by each moteus).
-void printState(uint32_t t_ms, const AttitudeState& state,
+void printState(Stream& out, uint32_t t_ms, const AttitudeState& state,
                 const float tauCmd[3], bool armed, float gainScale,
                 const float wheelPos[3], const float wheelVel[3]) {
-  Serial.print(t_ms);
-  for (int i = 0; i < 4; ++i) { Serial.print('\t'); Serial.print(state.q[i], 4); }
-  for (int i = 0; i < 3; ++i) { Serial.print('\t'); Serial.print(state.w[i] * (float)RAD_TO_DEG, 2); }
-  for (int i = 0; i < 3; ++i) { Serial.print('\t'); Serial.print(tauCmd[i], 4); }
-  Serial.print('\t'); Serial.print(armed ? 1 : 0);
-  Serial.print('\t'); Serial.print(gainScale, 2);
+  out.print(t_ms);
+  for (int i = 0; i < 4; ++i) { out.print('\t'); out.print(state.q[i], 4); }
+  for (int i = 0; i < 3; ++i) { out.print('\t'); out.print(state.w[i] * (float)RAD_TO_DEG, 2); }
+  for (int i = 0; i < 3; ++i) { out.print('\t'); out.print(tauCmd[i], 4); }
+  out.print('\t'); out.print(armed ? 1 : 0);
+  out.print('\t'); out.print(gainScale, 2);
   for (int i = 0; i < 3; ++i) {
-    Serial.print('\t'); Serial.print(wheelPos[i], 3);
-    Serial.print('\t'); Serial.print(wheelVel[i], 3);
+    out.print('\t'); out.print(wheelPos[i], 3);
+    out.print('\t'); out.print(wheelVel[i], 3);
   }
-  Serial.println();
+  out.println();
 }
 
 // Same fields as printState() above, same order, but plain comma-separated
 // with no header/comment lines -- for a PLOTMODE live-plot script (TODO,
-// mirror matlab/2Dmodel/Validation/telemetry_matlab.m or
-// telemetry_python.py -- both read this exact same format).
-void telemetryPlot(uint32_t t_ms, const AttitudeState& state,
+// mirror matlab/2Dmodel/Validation/telemetry_python_wifi.py).
+void telemetryPlot(Stream& out, uint32_t t_ms, const AttitudeState& state,
                    const float tauCmd[3], bool armed, float gainScale,
                    const float wheelPos[3], const float wheelVel[3]) {
-  Serial.print(t_ms);
-  for (int i = 0; i < 4; ++i) { Serial.print(','); Serial.print(state.q[i], 6); }
-  for (int i = 0; i < 3; ++i) { Serial.print(','); Serial.print(state.w[i] * (float)RAD_TO_DEG, 4); }
-  for (int i = 0; i < 3; ++i) { Serial.print(','); Serial.print(tauCmd[i], 6); }
-  Serial.print(','); Serial.print(armed ? 1 : 0);
-  Serial.print(','); Serial.print(gainScale, 4);
+  out.print(t_ms);
+  for (int i = 0; i < 4; ++i) { out.print(','); out.print(state.q[i], 6); }
+  for (int i = 0; i < 3; ++i) { out.print(','); out.print(state.w[i] * (float)RAD_TO_DEG, 4); }
+  for (int i = 0; i < 3; ++i) { out.print(','); out.print(tauCmd[i], 6); }
+  out.print(','); out.print(armed ? 1 : 0);
+  out.print(','); out.print(gainScale, 4);
   for (int i = 0; i < 3; ++i) {
-    Serial.print(','); Serial.print(wheelPos[i], 6);
-    Serial.print(','); Serial.print(wheelVel[i], 6);
+    out.print(','); out.print(wheelPos[i], 6);
+    out.print(','); out.print(wheelVel[i], 6);
   }
-  Serial.println();
+  out.println();
 }
 
 
 // ----------------------------------------------------------------------------
 // SECTION 2d: CONTROL (commandWheels() is a STUB -- see TODO)
 // ----------------------------------------------------------------------------
+// Unchanged from Skeleton_3Axis.ino.
 
 static bool  gArmed     = false;
 static float gGainScale = 1.0f;
@@ -406,9 +457,7 @@ static Moteus::PositionMode::Format kTorqueFormat = []() {
   return f;
 }();
 
-// Essential/unchanged -- sends one torque command to one wheel. Factored
-// out of the 2D sketch's commandWheel() (which combined this with the
-// control law) since here it's called once per wheel, 3x per cycle.
+// Essential/unchanged -- sends one torque command to one wheel.
 //
 // Input:  wheel   -- which driver (gWheels[0..2]).
 //         tau     -- commanded torque, N*m, already sign-corrected by the
@@ -430,12 +479,9 @@ void sendWheelTorque(Moteus& wheel, float tau) {
 
 // TODO: the actual 3-axis control law (state feedback / LQR / etc.),
 // mapping the AttitudeState (4 quaternion + 3 rate terms) and 3 wheel
-// speeds to 3 output torques. Mirrors commandWheel() in the 2D Stage4
-// sketch (tau = -(k1*theta + k2*theta_dot + k3*wheel_omega) * gGainScale,
-// then taper/saturate/trip-on-limit), extended to a MIMO law. When
-// implementing this, also move the arm-gating, gGainScale scaling,
-// saturation, and safety-limit trips (gArmed = false on overtilt/overspeed
-// /non-finite, same as the 2D sketch) in here.
+// speeds to 3 output torques. When implementing this, also move the
+// arm-gating, gGainScale scaling, saturation, and safety-limit trips
+// (gArmed = false on overtilt/overspeed/non-finite) in here.
 //
 // Input:  state       -- current attitude/rate estimate, from calculateState().
 //         wheelOmega  -- current wheel speeds, rad/s (wheelOmega[0..2]).
@@ -452,52 +498,81 @@ void commandWheels(const AttitudeState& state, const float wheelOmega[3],
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2e: SERIAL COMMANDS
+// SECTION 2e: COMMANDS (from either Serial or Serial1)
 // ----------------------------------------------------------------------------
+// handleCommandLine() is the same a/g/h parsing Skeleton_3Axis.ino has,
+// plus 'k' (keepalive/no-op -- see LineReader/gLastSerial1RxMillis above,
+// and the header note on why this is 'k' and NOT 'h' here) and 't'
+// (link-mode select -- handled before this is even called, see
+// pollCommands() below). `echo` is whichever stream the line arrived on, so
+// a SERIALMONITORMODE ack goes back down the same channel it came in on.
+void handleCommandLine(const char* line, Stream& echo) {
+  if (line[0] == '\0') { return; }
 
-void handleSerialCommands() {
-  if (!Serial.available()) { return; }
-  String line = Serial.readStringUntil('\n');
-  line.trim();
-  if (line.length() == 0) { return; }
+  const char cmd = line[0];
+  const float val = atof(line + 1);
 
-  const char cmd = line.charAt(0);
-  const float val = line.substring(1).toFloat();
-
-  // Command handling itself always runs, in both telemetry modes -- only
-  // the "#" status echoes below are Serial-Monitor-mode only, so a
-  // PLOTMODE stream stays clean CSV even while you arm/disarm from the
-  // terminal.
   if (cmd == 'a') {
     gArmed = (val != 0.0f);
 #if TELEMETRY_MODE == SERIALMONITORMODE
-    Serial.print("# gArmed = "); Serial.println(gArmed ? "TRUE" : "FALSE");
+    echo.print("# gArmed = "); echo.println(gArmed ? "TRUE" : "FALSE");
 #endif
   } else if (cmd == 'g') {
     gGainScale = val < 0.0f ? 0.0f : (val > 1.0f ? 1.0f : val);
 #if TELEMETRY_MODE == SERIALMONITORMODE
-    Serial.print("# gGainScale = "); Serial.println(gGainScale, 3);
+    echo.print("# gGainScale = "); echo.println(gGainScale, 3);
 #endif
   } else if (cmd == 'h') {
     gHalted = (val != 0.0f);
     if (gHalted && gArmed) {
       gArmed = false;
 #if TELEMETRY_MODE == SERIALMONITORMODE
-      Serial.println("# disarmed by halt");
+      echo.println("# disarmed by halt");
 #endif
     }
 #if TELEMETRY_MODE == SERIALMONITORMODE
-    Serial.print("# gHalted = ");
-    Serial.println(gHalted ? "TRUE (idle -- no IMU reads, no CAN traffic)"
-                            : "FALSE (resumed, still DISARMED -- send a1)");
+    echo.print("# gHalted = ");
+    echo.println(gHalted ? "TRUE (idle -- no IMU reads, no CAN traffic)"
+                          : "FALSE (resumed, still DISARMED -- send a1)");
 #endif
+  } else if (cmd == 'k') {
+    // keepalive / no-op -- receipt alone is enough (see pollCommands()).
+    // NOT 'h' here -- 'h' is HALT, see the file header note.
 #if TELEMETRY_MODE == SERIALMONITORMODE
   } else {
-    // TODO: 2D's 'o' (mount-offset) command has no 3D equivalent yet --
-    // add per-axis calibration commands here once attitude calibration
-    // for the 3D rig is worked out.
-    Serial.println("# unknown. use: a<0/1>  g<0..1>  h<0/1>");
+    echo.println("# unknown. use: a<0/1>  g<0..1>  h<0/1>  t<0/1>  k");
 #endif
+  }
+}
+
+// Polls BOTH Serial and Serial1 every loop() iteration -- see the
+// LineReader comment above for why this can never block. 't'-prefixed
+// lines switch gLinkMode locally and are NOT passed to handleCommandLine();
+// everything else (a/g/h/k) is, regardless of which stream it arrived on.
+void pollCommands() {
+  static char lineBuf[64];
+
+  if (gUsbReader.poll(Serial, lineBuf, sizeof(lineBuf))) {
+    if (lineBuf[0] == 't') {
+      const LinkMode newMode = (lineBuf[1] != '0') ? LinkMode::WIFI : LinkMode::USB;
+      if (newMode == LinkMode::WIFI && gLinkMode != LinkMode::WIFI) {
+        gLastSerial1RxMillis = millis();   // fresh grace period on entry
+      }
+      gLinkMode = newMode;
+    } else {
+      handleCommandLine(lineBuf, Serial);
+    }
+  }
+
+  if (gLinkReader.poll(Serial1, lineBuf, sizeof(lineBuf))) {
+    gLastSerial1RxMillis = millis();   // any line at all counts as link-alive
+    if (lineBuf[0] == 't') {
+      const LinkMode newMode = (lineBuf[1] != '0') ? LinkMode::WIFI : LinkMode::USB;
+      gLinkMode = newMode;   // already just heard from Serial1, so no need
+                              // to reset the grace period here
+    } else {
+      handleCommandLine(lineBuf, Serial1);
+    }
   }
 }
 
@@ -509,8 +584,16 @@ void handleSerialCommands() {
 void setup() {
 
   Serial.begin(115200);
-  while (!Serial) {}
-  Serial.println("started - 3D SKELETON (calculateState/commandWheels not yet implemented)");
+  // Bounded wait, NOT while(!Serial){} -- Skeleton_3Axis.ino's USB-tethered
+  // build can afford to hang here since a laptop is always attached; this
+  // WiFi build must still boot into WIFI mode with nothing on USB at all.
+  uint32_t usbWaitStart = millis();
+  while (!Serial && millis() - usbWaitStart < 3000) { delay(10); }
+
+  Serial1.begin(kLinkBaud);
+  gLastSerial1RxMillis = millis();
+
+  Serial.println("\nstarted - 3D SKELETON (WiFi build, calculateState/commandWheels not yet implemented)");
 
   const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
   while (errorCode != 0) {
@@ -546,6 +629,7 @@ void setup() {
                   "wheelX_pos\twheelX_vel\twheelY_pos\twheelY_vel\twheelZ_pos\twheelZ_vel");
   Serial.println("# STARTS DISARMED. Send a1 to arm.");
   Serial.println("# h1 halts (idle + disarm), h0 resumes (still disarmed).");
+  Serial.println("# t0 = USB link mode, t1 = WiFi link mode (default t1). k = keepalive.");
   Serial.println("# NOTE: commandWheels() is a stub -- always commands zero torque.");
 #endif
 
@@ -560,10 +644,17 @@ void setup() {
 
 void loop() {
 
-  handleSerialCommands();
+  pollCommands();
 
-  // Halted: skip IMU reads, CAN traffic, and telemetry entirely. Serial
-  // commands above still run every pass, so "h0" always gets through.
+  // WiFi-mode link watchdog -- only enforced in WIFI mode, mirrors what an
+  // explicit a0 does. USB mode never auto-disarms from this.
+  if (gLinkMode == LinkMode::WIFI && gArmed &&
+      millis() - gLastSerial1RxMillis > kLinkTimeoutMs) {
+    gArmed = false;
+  }
+
+  // Halted: skip IMU reads, CAN traffic, and telemetry entirely. pollCommands()
+  // above still runs every pass, so "h0" always gets through.
   if (gHalted) { return; }
 
   if (static_cast<int32_t>(millis() - gNextSendMillis) < 0) { return; }
@@ -594,11 +685,12 @@ void loop() {
     sendWheelTorque(*gWheels[i], kWheelSign[i] * tauCmd[i]);
   }
 
-  // --- telemetry ---
+  // --- telemetry: goes to Serial or Serial1 depending on gLinkMode ---
+  Stream& out = (gLinkMode == LinkMode::WIFI) ? (Stream&)Serial1 : (Stream&)Serial;
 #if TELEMETRY_MODE == PLOTMODE
-  telemetryPlot(time, state, tauCmd, gArmed, gGainScale, wheelPos, wheelVel);
+  telemetryPlot(out, time, state, tauCmd, gArmed, gGainScale, wheelPos, wheelVel);
 #else
-  printState(time, state, tauCmd, gArmed, gGainScale, wheelPos, wheelVel);
+  printState(out, time, state, tauCmd, gArmed, gGainScale, wheelPos, wheelVel);
 #endif
 
 }   // end of loop()
@@ -607,14 +699,20 @@ void loop() {
 // ============================================================================
 // NOTES
 // ----------------------------------------------------------------------------
-// This is architecture, not a working control loop. Before this sketch does
-// anything to real hardware:
+// Companion files:
+//   firmware/XIAO/xiao_teensy_bridge/xiao_teensy_bridge.ino  -- the XIAO
+//     ESP32C6 sketch that relays Serial1 <-> UDP. Reused as-is from the 2D
+//     build -- it just relays bytes, it has no opinion on command grammar.
+//   matlab/3Dmodel/Validation/  -- TODO: a 3D analogue of
+//     telemetry_python_wifi.py needs to (a) parse this file's ~18-field CSV
+//     instead of the 2D build's 9 fields, and (b) send "k" as its periodic
+//     keepalive, NOT "h" -- see the file header note above.
+//
+// Same pre-hardware checklist as Skeleton_3Axis.ino applies unchanged:
 //   1. Implement calculateState() -- 3D attitude/rate estimation.
-//   2. Implement commandWheels() -- 3-axis control law, including the
-//      arm-gating / gGainScale scaling / saturation / safety-trip logic
-//      that lives inside commandWheel() in the 2D Stage4 sketch.
+//   2. Implement commandWheels() -- 3-axis control law + arm-gating/
+//      saturation/safety-trip logic.
 //   3. Recalibrate kGyroBias/kAccelOffset/kAccelScale for this IMU mount.
-//   4. Calibrate kWheelSign[3] with a per-axis sign check (2D Stage 1
-//      method), then define a staged bring-up (mirroring 2D's Stage 0-5)
-//      before ever arming with wheels spinning near a human.
+//   4. Calibrate kWheelSign[3] with a per-axis sign check, then define a
+//      staged bring-up before ever arming with wheels spinning near a human.
 // ============================================================================
