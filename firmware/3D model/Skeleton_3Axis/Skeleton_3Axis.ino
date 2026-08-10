@@ -141,8 +141,8 @@ static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
 // where theta1 and theta3 become indistinguishable. 54.7356 deg is nowhere
 // near either, so this is not a live concern for the default mount -- but
 // don't retune theta2 toward 0/180 without accounting for it.
-float gTheta1Deg = 0.0f;
-float gTheta2Deg = 54.7356f;
+float gTheta1Deg = 30.0f;
+float gTheta2Deg = -144.7356f;
 float gTheta3Deg = 45.0f;
 
 float gMountDCM[3][3];
