@@ -122,13 +122,16 @@ static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
 // to closed form below -- do not multiply the elementary matrices at
 // runtime, and do not transpose the result.
 //
-// Verification (theta1=30, theta2=-135, theta3=45 -- the defaults below):
+// Closed-form verified by hand against theta1=30, theta2=-135, theta3=45:
 //   C = [ 0.862372  -0.079459  -0.500000
 //        -0.362372  -0.786566  -0.500000
 //        -0.353553   0.612372  -0.707107 ]
-// checkMountingDCMValid() in setup() checks det(C)~=+1 and unit row norms.
+// The defaults below (-144.7356103 for theta2) are this rig's actual
+// measured corner-mount geometry, not that reference case -- they're
+// checked at runtime instead, by checkMountingDCMValid() in setup()
+// (det(C)~=+1 and unit row norms).
 float theta1_deg = 30.0f;
-float theta2_deg = -135.0f;
+float theta2_deg = -144.7356103f;
 float theta3_deg = 45.0f;
 
 float gMountDCM[3][3];
