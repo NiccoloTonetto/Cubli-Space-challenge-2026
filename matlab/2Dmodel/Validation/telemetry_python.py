@@ -209,7 +209,7 @@ def main():
         artists = (lTheta, lThetaDot, lTau, lTauCmd, lWheelLp,
                    txtTheta, txtThetaDot, txtTau, txtTauCmd, txtWheelLp)
         if not got_any:
-            return artists
+o            return artists
 
         lTheta.set_data(log["t"], log["theta"])
         lThetaDot.set_data(log["t"], log["theta_dot"])

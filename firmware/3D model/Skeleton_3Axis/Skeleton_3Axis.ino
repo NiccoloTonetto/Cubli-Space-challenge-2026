@@ -100,22 +100,26 @@ struct IMUData {
 static const float kG0 = 9.80665f;
 // TODO: these calibration constants were measured for the 2D panel's IMU
 // mount (Stage 0). Recalibrate for the 3D rig's mount/orientation before
-// trusting calculateState() below.
+// trusting calculateState() below -- run
+// "firmware/3D model/IMU_Calibration/IMU_Calibration.ino" on the bench,
+// then paste its printed block in place of the three lines below verbatim
+// (SENSOR-frame values, same convention this file already applies in
+// readIMU() -- see that sketch's header for why it must be run against the
+// board's own axes, not the cube's).
 static const float kGyroBias[3]    = { 0.0f, 0.0f, 0.0f };
 static const float kAccelOffset[3] = { 0.0f, 0.0f, 0.0f };
 static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
 
 // ----------------------------------------------------------------------------
-// IMU MOUNT TRANSFORM: sensor frame -> body/geometric-centre frame
+// IMU MOUNT TRANSFORM: sensor frame -> body frame
 // ----------------------------------------------------------------------------
-// Two independent corrections, applied in readIMU() after calibration:
-//   1. ROTATION    -- the IMU is mounted at a fixed skew angle. gMountDCM
-//                      rotates sensor-axis readings into body axes.
-//   2. TRANSLATION -- the IMU is not exactly at the cube's geometric centre
-//                      G. gLeverArmM corrects the ACCELEROMETER only for
-//                      that offset (the gyro needs no correction -- angular
-//                      velocity is identical at every point of a rigid
-//                      body, so there is no lever-arm term for it).
+// The IMU sits at the cube's geometric centre (no measurable offset), so
+// the only correction needed is a ROTATION -- gMountDCM rotates sensor-axis
+// readings into body axes. There is no lever arm, so no omega-x-r
+// (centripetal) or alpha-x-r (Euler) term is needed for the accelerometer
+// either -- those only arise when the sensor is offset from the point whose
+// motion you care about, and here it isn't. (The gyro was never subject to
+// this: angular velocity is identical at every point of a rigid body.)
 //
 // Mounting sequence: intrinsic Z -> X -> Z (theta1 about sensor z, theta2
 // about the resulting x, theta3 about the resulting z). gMountDCM is the
@@ -130,9 +134,8 @@ static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
 // half-angle), theta3=45. Verified by hand against the direct unit-vector
 // derivation -- reproduces it exactly, so this parametrization changes
 // NOTHING about current behaviour; it only makes the mount angle
-// runtime-tunable and adds lever-arm support. Re-measure and call
-// setMountingAngles()/setLeverArm() if the assembled mount ever deviates
-// from this ideal corner geometry.
+// runtime-tunable. Re-measure and call setMountingAngles() if the assembled
+// mount ever deviates from this ideal corner geometry.
 //
 // GIMBAL LOCK: this Z-X-Z sequence is degenerate at theta2 = 0 or 180 deg,
 // where theta1 and theta3 become indistinguishable. 54.7356 deg is nowhere
@@ -141,19 +144,6 @@ static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
 float gTheta1Deg = 0.0f;
 float gTheta2Deg = 54.7356f;
 float gTheta3Deg = 45.0f;
-
-// Lever arm: IMU origin -> geometric centre G, in BODY axes [m]. TODO:
-// currently unmeasured -- the IMU is assumed to sit AT the geometric
-// centre (matches the mount description above), so this is left at zero
-// until a real physical offset is measured. Direction matters: this is
-// FROM the IMU TO G, not the other way -- reversing it flips the sign of
-// every correction term. With this at zero both lever-arm terms below are
-// exactly zero, so leaving it unmeasured is safe, not just "close enough."
-float gLeverArmM[3] = { 0.0f, 0.0f, 0.0f };
-
-float gAlphaFcHz    = 15.0f;  // LPF cutoff on angular acceleration -- TODO tune
-bool  gUseEulerTerm = true;   // set false to drop the alpha x d term; moot
-                               // while gLeverArmM is zero (see above).
 
 float gMountDCM[3][3];
 
@@ -181,10 +171,6 @@ void setMountingAngles(float t1Deg, float t2Deg, float t3Deg) {
   updateMountingDCM();
 }
 
-void setLeverArm(float dx, float dy, float dz) {
-  gLeverArmM[0] = dx; gLeverArmM[1] = dy; gLeverArmM[2] = dz;
-}
-
 // One-time startup sanity check -- verifies gMountDCM is a proper rotation
 // (det ~= +1, each row unit-length). Row-length checks alone can't catch a
 // reflection (det ~= -1) from a sign error in the angles above; this can.
@@ -203,77 +189,18 @@ void checkMountingDCMValid() {
   // gTheta2Deg/gTheta3Deg were mistyped -- fix before trusting attitude output.
 }
 
-// Angular-acceleration state for the lever-arm Euler term -- carries the
-// previous rotated rate + filtered alpha across calls, same in/out pattern
-// as calculateState()'s own static state below.
-static float    gWPrev[3] = { 0.0f, 0.0f, 0.0f };
-static float    gAlpha[3] = { 0.0f, 0.0f, 0.0f };
-static bool     gAlphaInit = false;
-static uint32_t gLastTransformMicros = 0;
-
-// Rotates sensor-frame accel+gyro into body axes and corrects the
-// accelerometer for the IMU->G lever arm:
-//   w_G = C * w_imu
-//   a_G = C * a_imu + alpha x d + w x (w x d)
-// (centripetal term implemented as the expanded identity
-// w x (w x d) = w(w.d) - d|w|^2 -- cheaper, no temporary vector.)
-// alpha uses a MEASURED dt (backward difference of the rotated rate, then
-// low-pass filtered) rather than a fixed period -- loop()'s actual cycle
-// time jitters slightly around kPeriodMs, same reasoning as
-// calculateState()'s own live dt measurement below.
-void transformToGeometricCentre(const float aImu[3], const float wImu[3],
-                                float aG[3], float wG[3]) {
+// Rotates sensor-frame accel+gyro into body axes: w_body = C * w_imu,
+// a_body = C * a_imu.
+void rotateToBodyFrame(const float aImu[3], const float wImu[3],
+                       float aBody[3], float wBody[3]) {
   for (int i = 0; i < 3; ++i) {
-    wG[i] = gMountDCM[i][0]*wImu[0] + gMountDCM[i][1]*wImu[1] + gMountDCM[i][2]*wImu[2];
+    wBody[i] = gMountDCM[i][0]*wImu[0] + gMountDCM[i][1]*wImu[1] + gMountDCM[i][2]*wImu[2];
+    aBody[i] = gMountDCM[i][0]*aImu[0] + gMountDCM[i][1]*aImu[1] + gMountDCM[i][2]*aImu[2];
   }
-  float aRot[3];
-  for (int i = 0; i < 3; ++i) {
-    aRot[i] = gMountDCM[i][0]*aImu[0] + gMountDCM[i][1]*aImu[1] + gMountDCM[i][2]*aImu[2];
-  }
-
-  const uint32_t now = micros();
-  float dt = gAlphaInit ? (now - gLastTransformMicros) * 1e-6f : 0.0f;
-  gLastTransformMicros = now;
-  if (dt <= 0.0f || dt > 0.5f) { dt = kPeriodMs * 1e-3f; }
-
-  if (!gAlphaInit) {
-    gAlpha[0] = gAlpha[1] = gAlpha[2] = 0.0f;
-    gAlphaInit = true;
-  } else {
-    const float tau = 1.0f / (2.0f * (float)PI * gAlphaFcHz);
-    const float lp  = dt / (tau + dt);
-    for (int i = 0; i < 3; ++i) {
-      gAlpha[i] += lp * ((wG[i] - gWPrev[i]) / dt - gAlpha[i]);
-    }
-  }
-  for (int i = 0; i < 3; ++i) { gWPrev[i] = wG[i]; }
-
-  const float wx = wG[0], wy = wG[1], wz = wG[2];
-  const float dx = gLeverArmM[0], dy = gLeverArmM[1], dz = gLeverArmM[2];
-  const float wDotD = wx*dx + wy*dy + wz*dz;
-  const float wSq   = wx*wx + wy*wy + wz*wz;
-
-  const float cenX = wx*wDotD - dx*wSq;
-  const float cenY = wy*wDotD - dy*wSq;
-  const float cenZ = wz*wDotD - dz*wSq;
-
-  float eulX = 0.0f, eulY = 0.0f, eulZ = 0.0f;
-  if (gUseEulerTerm) {
-    eulX = gAlpha[1]*dz - gAlpha[2]*dy;
-    eulY = gAlpha[2]*dx - gAlpha[0]*dz;
-    eulZ = gAlpha[0]*dy - gAlpha[1]*dx;
-  }
-
-  aG[0] = aRot[0] + eulX + cenX;
-  aG[1] = aRot[1] + eulY + cenY;
-  aG[2] = aRot[2] + eulZ + cenZ;
 }
 
 // Essential -- unit conversion + calibration (sensor frame), then rotation
-// + lever-arm correction into body/geometric-centre frame via
-// transformToGeometricCentre() above. calculateState() below now receives
-// genuinely body-frame, centre-corrected accel/gyro, not raw sensor-frame
-// readings.
+// into body frame via rotateToBodyFrame() above.
 IMUData readIMU(BMI270& sensor) {
   const float aImu[3] = {
     (sensor.data.accelX * kG0 - kAccelOffset[0]) / kAccelScale[0],
@@ -286,12 +213,12 @@ IMUData readIMU(BMI270& sensor) {
     sensor.data.gyroZ * (float)DEG_TO_RAD - kGyroBias[2],
   };
 
-  float aG[3], wG[3];
-  transformToGeometricCentre(aImu, wImu, aG, wG);
+  float aBody[3], wBody[3];
+  rotateToBodyFrame(aImu, wImu, aBody, wBody);
 
   IMUData d;
-  d.ax = aG[0]; d.ay = aG[1]; d.az = aG[2];
-  d.wx = wG[0]; d.wy = wG[1]; d.wz = wG[2];
+  d.ax = aBody[0]; d.ay = aBody[1]; d.az = aBody[2];
+  d.wx = wBody[0]; d.wy = wBody[1]; d.wz = wBody[2];
   return d;
 }
 
