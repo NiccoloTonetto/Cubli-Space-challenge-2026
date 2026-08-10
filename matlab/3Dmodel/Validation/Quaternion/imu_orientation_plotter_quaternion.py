@@ -1,8 +1,9 @@
-"""imu_orientation_plotter.py
+"""imu_orientation_plotter_quaternion.py
 
 Live 3D orientation viewer for the Skeleton_3Axis.ino / Skeleton_3Axis_WiFi.ino
-firmware running with TELEMETRY_MODE set to PLOTMODE. In that mode the
-Teensy sends one plain CSV line per control cycle, no header/comment lines:
+firmware running with TELEMETRY_MODE set to PLOTMODE, QUATERNION variant. In
+that mode the Teensy sends one plain CSV line per control cycle, no
+header/comment lines:
 
     t_ms,q0,q1,q2,q3,wx_dps,wy_dps,wz_dps,tau_x,tau_y,tau_z,armed,gain_scale,
     wheelX_pos,wheelX_vel,wheelY_pos,wheelY_vel,wheelZ_pos,wheelZ_vel
@@ -14,6 +15,11 @@ in deg/s -- shown here purely as a live readout so you can cross-check it
 against the rendered rotation (e.g. rotate the IMU about its body X axis
 and confirm both wx's sign and the cube's on-screen rotation match what
 you expect for that axis).
+
+This is the quaternion-input counterpart to ../Euler/imu_orientation_plotter_euler.py,
+which expects roll_deg,pitch_deg,yaw_deg fields instead of q0..q3 -- pick
+whichever one matches what the firmware is actually printing, since the two
+wire formats aren't interchangeable.
 
 Python equivalent in spirit to matlab/2Dmodel/Validation/telemetry_python.py:
 same background-thread-reads-serial-into-a-queue architecture, same
@@ -36,7 +42,8 @@ Usage:
        Manager -> Ports, e.g. "COM9").
     3. Run this script. A window opens with a live-rotating cube.
        Or run with --demo to preview the renderer with synthetic rotation
-       and no hardware attached at all: python imu_orientation_plotter.py --demo
+       and no hardware attached at all:
+       python imu_orientation_plotter_quaternion.py --demo
     4. In the terminal (not the plot window), type commands like a1, g0.5,
        h1 and press Enter to send them to the Teensy (same grammar as
        telemetry_python.py; add t0/t1/k if using the _WiFi build's link-mode
@@ -138,7 +145,8 @@ def reader_thread(ser, q, stop_event):
                 last_warn = now
                 print("... no valid PLOTMODE lines in the last 2s -- check "
                       "that Skeleton_3Axis.ino's TELEMETRY_MODE is set to "
-                      "PLOTMODE (re-upload after changing it), and that "
+                      "PLOTMODE (re-upload after changing it), that it's "
+                      "printing quaternion fields (q0..q3), and that "
                       "PORT/BAUD above match the Teensy.")
             continue
 
@@ -153,7 +161,10 @@ def reader_thread(ser, q, stop_event):
                 print(f"Got a line but it isn't {NUM_COLS}-field PLOTMODE "
                       f"CSV ({len(parts)} fields): {line!r}")
                 print("If that looks tab-delimited or has a header/'#' "
-                      "text, the firmware is still in SERIALMONITORMODE.")
+                      "text, the firmware is still in SERIALMONITORMODE. If "
+                      "the field count is close but off by one, the "
+                      "firmware may be printing Euler angles instead -- use "
+                      "../Euler/imu_orientation_plotter_euler.py for that.")
             continue
         try:
             vals = [float(p) for p in parts]
@@ -240,7 +251,7 @@ def main():
 
     fig = plt.figure(figsize=(8, 8))
     fig.canvas.manager.set_window_title(
-        "IMU Orientation" + (" (DEMO)" if args.demo else " (PLOTMODE)"))
+        "IMU Orientation - Quaternion" + (" (DEMO)" if args.demo else " (PLOTMODE)"))
     ax = fig.add_subplot(111, projection="3d")
     ax.set_box_aspect([1, 1, 1])
     lim = 1.3
@@ -314,7 +325,7 @@ def main():
     rows = log["rows"]
     if rows:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_file = OUT_DIR / f"imu_orientation_{stamp}.csv"
+        out_file = OUT_DIR / f"imu_orientation_quat_{stamp}.csv"
         with out_file.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(COL_NAMES)
