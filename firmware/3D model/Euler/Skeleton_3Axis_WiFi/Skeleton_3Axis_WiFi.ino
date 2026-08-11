@@ -147,8 +147,8 @@ static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
 
 // STAGE 1: IMU mount transform, intrinsic Z-X-Z. See Skeleton_3Axis.ino for
 // the closed-form derivation and the verification matrix.
-float theta1_deg = 30.0f;
-float theta2_deg = -135.0f;
+float theta1_deg = -30.0f;
+float theta2_deg = 35.26438968f;
 float theta3_deg = 45.0f;
 
 float gMountDCM[3][3];
