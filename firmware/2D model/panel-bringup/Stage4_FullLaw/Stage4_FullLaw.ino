@@ -47,7 +47,7 @@
 // Change the line below and re-upload to switch modes.
 #define SERIALMONITORMODE 0
 #define PLOTMODE 1
-#define TELEMETRY_MODE PLOTMODE
+#define TELEMETRY_MODE SERIALMONITORMODE
 
 
 // ----------------------------------------------------------------------------
@@ -59,7 +59,7 @@ MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 
 Moteus moteus1(canBus, []() {
   Moteus::Options options;
-  options.id = 1;
+  options.id = 2;
   return options;
 }());
 

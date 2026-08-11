@@ -36,6 +36,15 @@
 #include <MoteusTeensy.h>
 #include <SPI.h>
 #include "SparkFun_BMI270_Arduino_Library.h"
+#include <stdio.h>   // snprintf(), for printState()'s aligned columns
+
+// Declared here (ahead of everything else) rather than down by its usage in
+// SECTION 2b -- Arduino's auto-generated function prototypes get inserted
+// right after the last #include, in file order. getGRef() takes BalanceMode
+// by value, so that type must already be visible at this point or the
+// auto-generated prototype fails to compile with "was not declared in this
+// scope".
+enum class BalanceMode : uint8_t { FACE = 0, EDGE = 1, CORNER = 2 };
 
 
 // ----------------------------------------------------------------------------
@@ -103,9 +112,9 @@ static const float kG0 = 9.80665f;
 // "firmware/3D model/IMU_Calibration/IMU_Calibration.ino" on the bench, then
 // paste its printed block in place of the three lines below verbatim
 // (SENSOR-frame values -- readIMURaw() below applies them before rotation).
-static const float kGyroBias[3]    = { 0.0f, 0.0f, 0.0f };
-static const float kAccelOffset[3] = { 0.0f, 0.0f, 0.0f };
-static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
+static const float kGyroBias[3]    = { +0.002348f, -0.001140f, -0.000762f };
+static const float kAccelOffset[3] = { -0.092282f, -0.196510f, +0.050664f };
+static const float kAccelScale[3]  = {  0.991085f,  0.991035f,  1.003787f };
 
 // ----------------------------------------------------------------------------
 // STAGE 1: IMU MOUNT TRANSFORM (sensor frame -> body frame)
@@ -126,12 +135,12 @@ static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
 //   C = [ 0.862372  -0.079459  -0.500000
 //        -0.362372  -0.786566  -0.500000
 //        -0.353553   0.612372  -0.707107 ]
-// The defaults below (-144.7356103 for theta2) are this rig's actual
+// The defaults below (theta1=-30, theta2=35.26438968) are this rig's actual
 // measured corner-mount geometry, not that reference case -- they're
 // checked at runtime instead, by checkMountingDCMValid() in setup()
 // (det(C)~=+1 and unit row norms).
-float theta1_deg = 30.0f;
-float theta2_deg = -144.7356103f;
+float theta1_deg = -30.0f;
+float theta2_deg = 54.74f;
 float theta3_deg = 45.0f;
 
 float gMountDCM[3][3];
@@ -225,8 +234,7 @@ float ACC_GATE   = 1.5f;   // m/s^2, half-width of the |a|~=g0 trust gate --
                             // sketch's accel gate, generalized to |a| not a
                             // single-axis check).
 float K_YAW_RATE = 0.0f;   // N*m / (rad/s) -- TODO placeholder, see header.
-float Kp         = 0.0f;   // N*m / 1 (tilt-error units, ~rad for small e) --
-                            // TODO placeholder, see header.
+float Kp         = 0.0f;   // N*m / rad -- TODO placeholder, see header.
 float Kd         = 0.0f;   // N*m / (rad/s) -- TODO placeholder, see header.
 
 static float gGyroBiasBody[3] = { 0.0f, 0.0f, 0.0f };
@@ -268,7 +276,6 @@ static inline void cross3(const float a[3], const float b[3], float out[3]) {
 // Which surface we're balancing on -- selects g_ref, the body-axis direction
 // that must align with g_hat at equilibrium. Assumes the post-rotation body
 // frame is axis-aligned with the cube faces; re-derive these if it isn't.
-enum class BalanceMode : uint8_t { FACE = 0, EDGE = 1, CORNER = 2 };
 static BalanceMode gBalanceMode = BalanceMode::CORNER;   // 3-wheel Cubli default
 
 static const float G_FACE[3]   = { 0.0f, 0.0f, 1.0f };
@@ -362,32 +369,38 @@ void eulerForTelemetry(const float gHat[3], float& rollRad, float& pitchRad) {
 // SECTION 2c: TELEMETRY
 // ----------------------------------------------------------------------------
 
-// wheelOmegaVert: net wheel speed projected onto g_hat (rad/s) -- a corner-
-// balancing cube is momentum-conserving about vertical (the wheels can only
-// TRADE vertical momentum with the body, never remove it), so watch this for
-// slow saturation. Proportional to net momentum along vertical only if all
-// three wheels share the same axial inertia; scale by I_w for true momentum.
-void printState(uint32_t t_ms, const float tauCmd[3], bool armed, float gainScale,
-                float wheelOmegaVert, const float wheelPos[3], const float wheelVel[3]) {
+// Fixed-width columns (right-justified, matching printState()'s field
+// widths/precisions below) so rows stay aligned under their header
+// regardless of sign or magnitude -- tabs alone don't guarantee that in a
+// Serial Monitor. Trimmed to just orientation + per-wheel speed/torque,
+// plus each wheel's own mode/fault (see the read loop in loop() for what
+// these mean -- mode 1 = FAULT is the one to watch for while debugging).
+// Full state (g_hat, body rates, tilt error, armed/gain, wheel position) is
+// still available via telemetryPlot() in PLOTMODE.
+static const char kHeaderLine[] =
+    "    t_ms roll_deg pitch_deg velX_rps velY_rps velZ_rps  tauX_Nm  tauY_Nm  tauZ_Nm   m1   f1   m2   f2   m3   f3";
+
+void printState(uint32_t t_ms, const float tauCmd[3], const float wheelVel[3],
+                const int wheelMode[3], const int wheelFault[3]) {
+  // Header printed ahead of every data line (not just once at boot) so each
+  // row is self-labeled in a scrolling Serial Monitor.
+  Serial.println(kHeaderLine);
+
   float rollRad, pitchRad;
   eulerForTelemetry(g_hat, rollRad, pitchRad);
 
-  Serial.print(t_ms);
-  for (int i = 0; i < 3; ++i) { Serial.print('\t'); Serial.print(g_hat[i], 4); }
-  for (int i = 0; i < 3; ++i) { Serial.print('\t'); Serial.print(w_b[i] * (float)RAD_TO_DEG, 2); }
-  for (int i = 0; i < 3; ++i) { Serial.print('\t'); Serial.print(e[i], 4); }
-  Serial.print('\t'); Serial.print(r_vert * (float)RAD_TO_DEG, 2);
-  Serial.print('\t'); Serial.print(rollRad  * (float)RAD_TO_DEG, 2);
-  Serial.print('\t'); Serial.print(pitchRad * (float)RAD_TO_DEG, 2);
-  for (int i = 0; i < 3; ++i) { Serial.print('\t'); Serial.print(tauCmd[i], 4); }
-  Serial.print('\t'); Serial.print(armed ? 1 : 0);
-  Serial.print('\t'); Serial.print(gainScale, 2);
-  Serial.print('\t'); Serial.print(wheelOmegaVert, 3);
-  for (int i = 0; i < 3; ++i) {
-    Serial.print('\t'); Serial.print(wheelPos[i], 3);
-    Serial.print('\t'); Serial.print(wheelVel[i], 3);
-  }
-  Serial.println();
+  char line[128];
+  snprintf(line, sizeof(line),
+           "%8lu %8.2f %9.2f %8.3f %8.3f %8.3f %8.4f %8.4f %8.4f %4d %4d %4d %4d %4d %4d",
+           (unsigned long)t_ms,
+           rollRad  * (float)RAD_TO_DEG,
+           pitchRad * (float)RAD_TO_DEG,
+           wheelVel[0], wheelVel[1], wheelVel[2],
+           tauCmd[0], tauCmd[1], tauCmd[2],
+           wheelMode[0], wheelFault[0],
+           wheelMode[1], wheelFault[1],
+           wheelMode[2], wheelFault[2]);
+  Serial.println(line);
 }
 
 // Same fields as printState() above, same order, comma-separated, no
@@ -424,7 +437,11 @@ void telemetryPlot(uint32_t t_ms, const float tauCmd[3], bool armed, float gainS
 // declared above (per the attitude-spec interface) but not read below.
 
 static bool  gArmed     = false;
-static float gGainScale = 1.0f;
+static float gGainScale = 0.1f;   // START LOW -- same convention as the 2D
+                                   // sketches (see Stage3_PositionDamping.ino):
+                                   // once commandWheels() below outputs real
+                                   // torque, ramp this by hand ('g0.3', 'g0.6',
+                                   // 'g1') rather than arming straight to 1.0.
 
 // TODO: placeholder so sendWheelTorque() below has a concrete number to
 // compile against. Re-derive per-wheel for the 3D hardware (mirror the 2D
@@ -582,10 +599,7 @@ void setup() {
   Serial.println(gGyroBiasBody[2], 6);
 
 #if TELEMETRY_MODE == SERIALMONITORMODE
-  Serial.println("t_ms\tgx\tgy\tgz\twx_dps\twy_dps\twz_dps\t"
-                  "ex\tey\tez\tr_vert_dps\troll_deg\tpitch_deg\t"
-                  "tau_x\ttau_y\ttau_z\tarmed\tgain_scale\twheel_omega_vert\t"
-                  "wheelX_pos\twheelX_vel\twheelY_pos\twheelY_vel\twheelZ_pos\twheelZ_vel");
+  Serial.println(kHeaderLine);
   Serial.println("# STARTS DISARMED. Send a1 to arm.");
   Serial.println("# h1 halts (idle + disarm), h0 resumes (still disarmed).");
   Serial.println("# m0/m1/m2 selects face/edge/corner balance mode.");
@@ -633,13 +647,35 @@ void loop() {
   float wheelPos[3];
   float wheelVel[3];      // rev/s, raw from moteus
   float wheelOmega[3];    // rad/s, sign-corrected -- what commandWheels() consumes
+  // mode/fault: the moteus's OWN reported state -- register 0x000/0x00f.
+  // Mode 1 = FAULT (fault code tells you why: 39 outside position limit, 36
+  // motor never calibrated via moteus_tool, 34/40 over/under voltage --
+  // full list at mjbots.github.io/moteus/protocol/registers). A moteus in
+  // FAULT keeps replying to CAN queries with normal-looking position/
+  // velocity, it just silently stops applying torque -- this is the field
+  // that tells "not working" apart from "working but nothing's moving".
+  // v.fault is int8_t and v.mode is an enum -- Serial.print() has a
+  // print(char) overload either can silently bind to (fault code 39 would
+  // print as "'" instead of "39"); cast both to (int) to force the numeric
+  // overload. See firmware/Firmware Lessons -- 2D Panel to 3D Cube.md #3.
+  int wheelMode[3];
+  int wheelFault[3];
   for (int i = 0; i < 3; ++i) {
     const auto& v = gWheels[i]->last_result().values;
     wheelPos[i] = v.position;
     wheelVel[i] = v.velocity;
     wheelOmega[i] = kWheelSign[i] * v.velocity * 2.0f * (float)PI;   // rev/s -> rad/s
+    wheelMode[i]  = (int)v.mode;
+    wheelFault[i] = (int)v.fault;
   }
   const float wheelOmegaVert = wheelOmega[0]*g_hat[0] + wheelOmega[1]*g_hat[1] + wheelOmega[2]*g_hat[2];
+#if TELEMETRY_MODE != PLOTMODE
+  // Only telemetryPlot() (PLOTMODE) reads these -- printState()'s trimmed
+  // columns don't. Kept computed either way (cheap, and PLOTMODE needs them
+  // unchanged) but silenced here to avoid unused-variable warnings.
+  (void)wheelPos;
+  (void)wheelOmegaVert;
+#endif
 
   // --- control + command ---
   float tauCmd[3];
@@ -652,7 +688,7 @@ void loop() {
 #if TELEMETRY_MODE == PLOTMODE
   telemetryPlot(time, tauCmd, gArmed, gGainScale, wheelOmegaVert, wheelPos, wheelVel);
 #else
-  printState(time, tauCmd, gArmed, gGainScale, wheelOmegaVert, wheelPos, wheelVel);
+  printState(time, tauCmd, wheelVel, wheelMode, wheelFault);
 #endif
 
 }   // end of loop()

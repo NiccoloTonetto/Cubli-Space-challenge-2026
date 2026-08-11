@@ -47,6 +47,15 @@
 #include <MoteusTeensy.h>
 #include <SPI.h>
 #include "SparkFun_BMI270_Arduino_Library.h"
+#include <stdio.h>   // snprintf(), for printState()'s aligned columns
+
+// Declared here (ahead of everything else) rather than down by its usage in
+// SECTION 2b -- Arduino's auto-generated function prototypes get inserted
+// right after the last #include, in file order. getGRef() takes BalanceMode
+// by value, so that type must already be visible at this point or the
+// auto-generated prototype fails to compile with "was not declared in this
+// scope".
+enum class BalanceMode : uint8_t { FACE = 0, EDGE = 1, CORNER = 2 };
 
 
 // ----------------------------------------------------------------------------
@@ -141,9 +150,9 @@ static LineReader gLinkReader;
 
 static const float kG0 = 9.80665f;
 // TODO: recalibrate for this IMU mount, see IMU_Calibration.ino.
-static const float kGyroBias[3]    = { 0.0f, 0.0f, 0.0f };
-static const float kAccelOffset[3] = { 0.0f, 0.0f, 0.0f };
-static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
+static const float kGyroBias[3]    = { +0.002348f, -0.001140f, -0.000762f };
+static const float kAccelOffset[3] = { -0.092282f, -0.196510f, +0.050664f };
+static const float kAccelScale[3]  = {  0.991085f,  0.991035f,  1.003787f };
 
 // STAGE 1: IMU mount transform, intrinsic Z-X-Z. See Skeleton_3Axis.ino for
 // the closed-form derivation and the verification matrix.
@@ -253,7 +262,6 @@ static inline void cross3(const float a[3], const float b[3], float out[3]) {
   out[2] = a[0]*b[1] - a[1]*b[0];
 }
 
-enum class BalanceMode : uint8_t { FACE = 0, EDGE = 1, CORNER = 2 };
 static BalanceMode gBalanceMode = BalanceMode::CORNER;
 
 static const float G_FACE[3]   = { 0.0f, 0.0f, 1.0f };
@@ -329,27 +337,32 @@ void eulerForTelemetry(const float gHat[3], float& rollRad, float& pitchRad) {
 // picks Serial or Serial1 each cycle based on gLinkMode. Field content/order
 // otherwise identical to Skeleton_3Axis.ino (Euler, non-WiFi).
 
-void printState(Stream& out, uint32_t t_ms, const float tauCmd[3], bool armed, float gainScale,
-                float wheelOmegaVert, const float wheelPos[3], const float wheelVel[3]) {
+// Fixed-width columns (right-justified, matching printState()'s field
+// widths/precisions below) so rows stay aligned under their header
+// regardless of sign or magnitude -- tabs alone don't guarantee that in a
+// Serial Monitor. Trimmed to just orientation + per-wheel speed/torque;
+// full state (g_hat, body rates, tilt error, armed/gain, wheel position)
+// is still available via telemetryPlot() in PLOTMODE.
+static const char kHeaderLine[] =
+    "    t_ms roll_deg pitch_deg velX_rps velY_rps velZ_rps  tauX_Nm  tauY_Nm  tauZ_Nm";
+
+void printState(Stream& out, uint32_t t_ms, const float tauCmd[3], const float wheelVel[3]) {
+  // Header printed ahead of every data line (not just once at boot) so each
+  // row is self-labeled in a scrolling Serial Monitor.
+  out.println(kHeaderLine);
+
   float rollRad, pitchRad;
   eulerForTelemetry(g_hat, rollRad, pitchRad);
 
-  out.print(t_ms);
-  for (int i = 0; i < 3; ++i) { out.print('\t'); out.print(g_hat[i], 4); }
-  for (int i = 0; i < 3; ++i) { out.print('\t'); out.print(w_b[i] * (float)RAD_TO_DEG, 2); }
-  for (int i = 0; i < 3; ++i) { out.print('\t'); out.print(e[i], 4); }
-  out.print('\t'); out.print(r_vert * (float)RAD_TO_DEG, 2);
-  out.print('\t'); out.print(rollRad  * (float)RAD_TO_DEG, 2);
-  out.print('\t'); out.print(pitchRad * (float)RAD_TO_DEG, 2);
-  for (int i = 0; i < 3; ++i) { out.print('\t'); out.print(tauCmd[i], 4); }
-  out.print('\t'); out.print(armed ? 1 : 0);
-  out.print('\t'); out.print(gainScale, 2);
-  out.print('\t'); out.print(wheelOmegaVert, 3);
-  for (int i = 0; i < 3; ++i) {
-    out.print('\t'); out.print(wheelPos[i], 3);
-    out.print('\t'); out.print(wheelVel[i], 3);
-  }
-  out.println();
+  char line[96];
+  snprintf(line, sizeof(line),
+           "%8lu %8.2f %9.2f %8.3f %8.3f %8.3f %8.4f %8.4f %8.4f",
+           (unsigned long)t_ms,
+           rollRad  * (float)RAD_TO_DEG,
+           pitchRad * (float)RAD_TO_DEG,
+           wheelVel[0], wheelVel[1], wheelVel[2],
+           tauCmd[0], tauCmd[1], tauCmd[2]);
+  out.println(line);
 }
 
 void telemetryPlot(Stream& out, uint32_t t_ms, const float tauCmd[3], bool armed, float gainScale,
@@ -559,10 +572,7 @@ void setup() {
   Serial.println(gGyroBiasBody[2], 6);
 
 #if TELEMETRY_MODE == SERIALMONITORMODE
-  Serial.println("t_ms\tgx\tgy\tgz\twx_dps\twy_dps\twz_dps\t"
-                  "ex\tey\tez\tr_vert_dps\troll_deg\tpitch_deg\t"
-                  "tau_x\ttau_y\ttau_z\tarmed\tgain_scale\twheel_omega_vert\t"
-                  "wheelX_pos\twheelX_vel\twheelY_pos\twheelY_vel\twheelZ_pos\twheelZ_vel");
+  Serial.println(kHeaderLine);
   Serial.println("# STARTS DISARMED. Send a1 to arm.");
   Serial.println("# t0 = USB link mode, t1 = WiFi link mode (default t1). k = keepalive.");
   Serial.println("# NOTE: commandWheels() is a stub -- always commands zero torque.");
@@ -621,6 +631,13 @@ void loop() {
     wheelOmega[i] = kWheelSign[i] * v.velocity * 2.0f * (float)PI;
   }
   const float wheelOmegaVert = wheelOmega[0]*g_hat[0] + wheelOmega[1]*g_hat[1] + wheelOmega[2]*g_hat[2];
+#if TELEMETRY_MODE != PLOTMODE
+  // Only telemetryPlot() (PLOTMODE) reads these -- printState()'s trimmed
+  // columns don't. Kept computed either way (cheap, and PLOTMODE needs them
+  // unchanged) but silenced here to avoid unused-variable warnings.
+  (void)wheelPos;
+  (void)wheelOmegaVert;
+#endif
 
   // --- control + command ---
   float tauCmd[3];
@@ -634,7 +651,7 @@ void loop() {
 #if TELEMETRY_MODE == PLOTMODE
   telemetryPlot(out, time, tauCmd, gArmed, gGainScale, wheelOmegaVert, wheelPos, wheelVel);
 #else
-  printState(out, time, tauCmd, gArmed, gGainScale, wheelOmegaVert, wheelPos, wheelVel);
+  printState(out, time, tauCmd, wheelVel);
 #endif
 
 }   // end of loop()

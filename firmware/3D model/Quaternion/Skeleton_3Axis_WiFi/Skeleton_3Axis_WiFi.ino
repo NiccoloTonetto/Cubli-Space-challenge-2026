@@ -182,9 +182,9 @@ static const float kG0 = 9.80665f;
 // (SENSOR-frame values, same convention this file already applies in
 // readIMU() -- see that sketch's header for why it must be run against the
 // board's own axes, not the cube's).
-static const float kGyroBias[3]    = { 0.0f, 0.0f, 0.0f };
-static const float kAccelOffset[3] = { 0.0f, 0.0f, 0.0f };
-static const float kAccelScale[3]  = { 1.0f, 1.0f, 1.0f };
+static const float kGyroBias[3]    = { +0.002348f, -0.001140f, -0.000762f };
+static const float kAccelOffset[3] = { -0.092282f, -0.196510f, +0.050664f };
+static const float kAccelScale[3]  = {  0.991085f,  0.991035f,  1.003787f };
 
 // ----------------------------------------------------------------------------
 // IMU MOUNT TRANSFORM: sensor frame -> body frame
@@ -319,9 +319,20 @@ void calculateState(const IMUData& imuData, AttitudeState& state) {
 // loop() picks Serial or Serial1 each cycle based on gLinkMode. Field
 // content/order is otherwise identical to Skeleton_3Axis.ino.
 
+// Column header for printState() below -- shared so it can be reprinted
+// periodically without drifting out of sync with the copy printed at boot.
+static const char kHeaderLine[] =
+    "t_ms\tq0\tq1\tq2\tq3\twx_dps\twy_dps\twz_dps\t"
+    "tau_x\ttau_y\ttau_z\tarmed\tgain_scale\t"
+    "wheelX_pos\twheelX_vel\twheelY_pos\twheelY_vel\twheelZ_pos\twheelZ_vel";
+
 void printState(Stream& out, uint32_t t_ms, const AttitudeState& state,
                 const float tauCmd[3], bool armed, float gainScale,
                 const float wheelPos[3], const float wheelVel[3]) {
+  // Header printed ahead of every data line (not just once at boot) so each
+  // row is self-labeled in a scrolling Serial Monitor.
+  out.println(kHeaderLine);
+
   out.print(t_ms);
   for (int i = 0; i < 4; ++i) { out.print('\t'); out.print(state.q[i], 4); }
   for (int i = 0; i < 3; ++i) { out.print('\t'); out.print(state.w[i] * (float)RAD_TO_DEG, 2); }
@@ -556,9 +567,7 @@ void setup() {
   }
 
 #if TELEMETRY_MODE == SERIALMONITORMODE
-  Serial.println("t_ms\tq0\tq1\tq2\tq3\twx_dps\twy_dps\twz_dps\t"
-                  "tau_x\ttau_y\ttau_z\tarmed\tgain_scale\t"
-                  "wheelX_pos\twheelX_vel\twheelY_pos\twheelY_vel\twheelZ_pos\twheelZ_vel");
+  Serial.println(kHeaderLine);
   Serial.println("# STARTS DISARMED. Send a1 to arm.");
   Serial.println("# h1 halts (idle + disarm), h0 resumes (still disarmed).");
   Serial.println("# t0 = USB link mode, t1 = WiFi link mode (default t1). k = keepalive.");
