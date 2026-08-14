@@ -1,8 +1,8 @@
 // ============================================================================
-// TEENSY 4.1 + 3x moteus-n1 (CAN3) + BMI270 IMU (SPI) — 3D SKELETON (EULER, WiFi)
+// TEENSY 4.1 + 3x moteus-n1 (CAN3) + BMI270 IMU (SPI) — 3D SKELETON (GAM, WiFi)
 // ============================================================================
 // Same attitude pipeline, estimator, and control law as
-// "firmware/3D model/Euler/Skeleton_3Axis/Skeleton_3Axis.ino" -- this file
+// "firmware/3D model/Gam/Skeleton_3Axis/Skeleton_3Axis.ino" -- this file
 // does NOT change any of that physics/estimator/control code. It only adds a
 // second telemetry/command channel (Serial1, wired to a XIAO ESP32C6 running
 // firmware/XIAO/xiao_teensy_bridge/xiao_teensy_bridge.ino) so the cube can
@@ -10,7 +10,7 @@
 // "firmware/2D model/panel-bringup/Stage4_FullLaw_WiFi/Stage4_FullLaw_WiFi.ino"
 // and "firmware/3D model/Quaternion/Skeleton_3Axis_WiFi/Skeleton_3Axis_WiFi.ino".
 //
-// Skeleton_3Axis.ino (Euler, non-WiFi) is intentionally left untouched -- it
+// Skeleton_3Axis.ino (Gam, non-WiFi) is intentionally left untouched -- it
 // remains the plain USB-tethered reference/fallback build. This is a
 // parallel file.
 //
@@ -145,7 +145,7 @@ static LineReader gLinkReader;
 // ----------------------------------------------------------------------------
 // SECTION 2b: STATE ESTIMATION
 // ----------------------------------------------------------------------------
-// Identical pipeline to Skeleton_3Axis.ino (Euler, non-WiFi) -- see that file
+// Identical pipeline to Skeleton_3Axis.ino (Gam, non-WiFi) -- see that file
 // for the full derivation/comments on every step below.
 
 static const float kG0 = 9.80665f;
@@ -335,7 +335,7 @@ void eulerForTelemetry(const float gHat[3], float& rollRad, float& pitchRad) {
 // ----------------------------------------------------------------------------
 // Both functions below take the destination `Stream&` explicitly -- loop()
 // picks Serial or Serial1 each cycle based on gLinkMode. Field content/order
-// otherwise identical to Skeleton_3Axis.ino (Euler, non-WiFi).
+// otherwise identical to Skeleton_3Axis.ino (Gam, non-WiFi).
 
 // Fixed-width columns (right-justified, matching printState()'s field
 // widths/precisions below) so rows stay aligned under their header
@@ -392,7 +392,7 @@ void telemetryPlot(Stream& out, uint32_t t_ms, const float tauCmd[3], bool armed
 // ----------------------------------------------------------------------------
 // SECTION 2d: CONTROL (commandWheels() is a STUB -- see TODO)
 // ----------------------------------------------------------------------------
-// Identical to Skeleton_3Axis.ino (Euler, non-WiFi) -- estimator is wired
+// Identical to Skeleton_3Axis.ino (Gam, non-WiFi) -- estimator is wired
 // and live, control law is not. Kp/Kd/K_YAW_RATE are declared above (per the
 // attitude-spec interface) but not read below.
 
@@ -429,7 +429,7 @@ void sendWheelTorque(Moteus& wheel, float tau) {
 
 // TODO: the actual 3-axis control law (state feedback / LQR / etc.), mapping
 // g_hat/w_b/e/r_vert (from attitudeUpdate()) and wheelOmega to 3 output
-// torques -- see Skeleton_3Axis.ino (Euler, non-WiFi) for the full TODO.
+// torques -- see Skeleton_3Axis.ino (Gam, non-WiFi) for the full TODO.
 //
 // Safe placeholder until implemented: always commands zero torque.
 void commandWheels(const float wheelOmega[3], float tauCmd[3]) {
@@ -667,6 +667,6 @@ void loop() {
 //     this file's CSV (see the SERIALMONITORMODE header string in setup())
 //     and send "k" as its periodic keepalive, NOT "h".
 //
-// Same pre-hardware checklist as Skeleton_3Axis.ino (Euler, non-WiFi)
+// Same pre-hardware checklist as Skeleton_3Axis.ino (Gam, non-WiFi)
 // applies unchanged -- see that file's NOTES section.
 // ============================================================================
