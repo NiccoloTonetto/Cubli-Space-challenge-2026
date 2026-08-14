@@ -53,6 +53,18 @@ Moteus moteusY(canBus, MakeOptions(3));
 Moteus moteusZ(canBus, MakeOptions(1));
 Moteus* const gWheels[3] = { &moteusX, &moteusY, &moteusZ };
 
+// DIAGNOSTIC ONLY -- not a fix, and not meant to ship. Second run (X=100%,
+// Y=Z=0%, every cycle) is consistent with EITHER the shared-receive-queue
+// discard theory (see NOTES) OR contention on ACAN_T4's single dedicated
+// TX mailbox for CAN-FD data frames (tryToSendDataFrameFD uses exactly one
+// hardware mailbox, not one per node, backed by a 16-deep software buffer).
+// Source reading alone can't tell which -- this is the cheap test. If a
+// gap here changes the 100/0/0 pattern at all, that implicates timing/
+// mailbox contention; if it makes no difference, that points back at the
+// receive-discard theory instead. Set to 0 to restore the original
+// back-to-back behavior once this has told us something.
+static const uint32_t kInterQueryDelayUs = 300;
+
 static const uint32_t kPeriodUs   = 2500;          // 400 Hz, matches FS_HZ in cubli_gains.h
 static const uint32_t kDurationUs = 600000000UL;   // 10 minutes
 static const uint32_t kStatusEveryUs = 5000000UL;  // live status line every 5 s
@@ -253,6 +265,7 @@ void loop() {
     const bool ok = gWheels[i]->SetPosition(cmd, &kTorqueFormat);
     const uint32_t rt = micros() - t0;
     recordLatency(i, rt, ok);
+    if (kInterQueryDelayUs > 0 && i < 2) { delayMicroseconds(kInterQueryDelayUs); }
   }
 
   const uint32_t cycleDur = micros() - cycleStart;
