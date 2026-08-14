@@ -136,6 +136,34 @@ void handleSerialCommands() {
 
 
 // ----------------------------------------------------------------------------
+// SECTION 2d: CAN BUS DIAGNOSTICS
+// ----------------------------------------------------------------------------
+// Distinguishes "nothing physically getting through" from "bus is fine,
+// nobody at this ID is answering" -- added after a 0/12000-reply run gave
+// no way to tell those apart from the reply counts alone. kBusOff means
+// the Teensy's own transmitter gave up after repeated ack failures, which
+// is what a missing termination resistor or a disconnected/miswired bus
+// looks like. Still kActive with zero replies points at ID/config instead
+// -- confirm the moteus is actually addressed as kMoteusId via
+// tview/moteus_tool on the ground-support adapter before touching wiring.
+
+const char* canStateName(tControllerState s) {
+  switch (s) {
+    case kActive:  return "ACTIVE";
+    case kPassive: return "PASSIVE";
+    case kBusOff:  return "BUS_OFF";
+  }
+  return "?";
+}
+
+void printCanDiagnostics() {
+  Serial.print("# CAN state: "); Serial.print(canStateName(ACAN_T4::can3.controllerState()));
+  Serial.print("  rxErr="); Serial.print(ACAN_T4::can3.receiveErrorCounter());
+  Serial.print("  txErr="); Serial.println(ACAN_T4::can3.transmitErrorCounter());
+}
+
+
+// ----------------------------------------------------------------------------
 // SECTION 3: setup()
 // ----------------------------------------------------------------------------
 
@@ -152,8 +180,12 @@ void setup() {
     delay(1000);
   }
 
+  Serial.println("# CAN-FD peripheral initialized locally -- this does NOT confirm a live bus/counterpart:");
+  printCanDiagnostics();
+
   const bool stopOk = moteus1.SetStop();
   Serial.print("# initial SetStop() reply: "); Serial.println(stopOk ? "OK" : "NO REPLY");
+  printCanDiagnostics();
 
   Serial.println("# Phase A (5s): SetStop() at 400 Hz");
   Serial.println("# send h to halt/resume, otherwise just watch");
@@ -170,11 +202,18 @@ void loop() {
 
   static uint32_t nextCycleUs = micros();
   static uint32_t startUs = micros();
+  static uint32_t nextDiagUs = micros() + 1000000UL;
   static bool announcedB = false, announcedC = false, done = false;
 
   if (done) { return; }
 
   const uint32_t now = micros();
+
+  if ((int32_t)(now - nextDiagUs) >= 0) {
+    nextDiagUs += 1000000UL;
+    printCanDiagnostics();
+  }
+
   if ((int32_t)(now - nextCycleUs) < 0) { return; }
   nextCycleUs += kPeriodUs;
 
