@@ -88,7 +88,14 @@ static uint32_t gLatMaxUs = 0;
 static uint64_t gLatSumUs = 0;
 static uint32_t gNoReplyCount = 0;
 
-void recordLatency(uint32_t rtUs, bool ok) {
+// Per-wheel breakdown -- added after a run where noReply was consistently
+// exactly 2x cycles (not ~2x, EXACTLY, for 80+ seconds): too regular to be
+// bus loading, and the pooled counters alone can't say whether it's always
+// the same wheel losing out or whether it rotates. gWheels[0..2] = X,Y,Z.
+static uint32_t gWheelReplies[3] = {0, 0, 0};
+static uint32_t gWheelNoReply[3] = {0, 0, 0};
+
+void recordLatency(int wheelIdx, uint32_t rtUs, bool ok) {
   int bin = (int)(rtUs / kBinWidthUs);
   if (bin >= kNumBins) { bin = kNumBins - 1; }
   gHist[bin]++;
@@ -96,7 +103,12 @@ void recordLatency(uint32_t rtUs, bool ok) {
   gLatSumUs += rtUs;
   if (rtUs < gLatMinUs) { gLatMinUs = rtUs; }
   if (rtUs > gLatMaxUs) { gLatMaxUs = rtUs; }
-  if (!ok) { gNoReplyCount++; }
+  if (ok) {
+    gWheelReplies[wheelIdx]++;
+  } else {
+    gNoReplyCount++;
+    gWheelNoReply[wheelIdx]++;
+  }
 }
 
 // Bucketed percentile: walk bins bottom-up, return the upper edge of the
@@ -144,7 +156,32 @@ static uint32_t gWorstCycleUs  = 0;
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2d: SERIAL COMMANDS
+// SECTION 2d: CAN BUS DIAGNOSTICS
+// ----------------------------------------------------------------------------
+// Same as Stage0_SingleMoteusQuery -- kBusOff/climbing error counters would
+// mean electrical contention with 3 nodes talking; staying ACTIVE with 0
+// errors while noReply is still ~2x cycles would rule that out and point at
+// something in the shared-bus receive path instead (see the NOTES at the
+// bottom of this file).
+
+const char* canStateName(tControllerState s) {
+  switch (s) {
+    case kActive:  return "ACTIVE";
+    case kPassive: return "PASSIVE";
+    case kBusOff:  return "BUS_OFF";
+  }
+  return "?";
+}
+
+void printCanDiagnostics() {
+  Serial.print("# CAN state: "); Serial.print(canStateName(ACAN_T4::can3.controllerState()));
+  Serial.print("  rxErr="); Serial.print(ACAN_T4::can3.receiveErrorCounter());
+  Serial.print("  txErr="); Serial.println(ACAN_T4::can3.transmitErrorCounter());
+}
+
+
+// ----------------------------------------------------------------------------
+// SECTION 2e: SERIAL COMMANDS
 // ----------------------------------------------------------------------------
 
 void handleSerialCommands() {
@@ -215,7 +252,7 @@ void loop() {
     const uint32_t t0 = micros();
     const bool ok = gWheels[i]->SetPosition(cmd, &kTorqueFormat);
     const uint32_t rt = micros() - t0;
-    recordLatency(rt, ok);
+    recordLatency(i, rt, ok);
   }
 
   const uint32_t cycleDur = micros() - cycleStart;
@@ -237,6 +274,13 @@ void loop() {
     Serial.print(" worstCycle_us="); Serial.print(gWorstCycleUs);
     Serial.print(" latMax_us="); Serial.print(gLatMaxUs);
     Serial.print(" noReply="); Serial.println(gNoReplyCount);
+    Serial.print("#   per-wheel replies/noReply  X="); Serial.print(gWheelReplies[0]);
+    Serial.print("/"); Serial.print(gWheelNoReply[0]);
+    Serial.print("  Y="); Serial.print(gWheelReplies[1]);
+    Serial.print("/"); Serial.print(gWheelNoReply[1]);
+    Serial.print("  Z="); Serial.print(gWheelReplies[2]);
+    Serial.print("/"); Serial.println(gWheelNoReply[2]);
+    printCanDiagnostics();
   }
 
   if (elapsed >= kDurationUs) {
@@ -255,6 +299,13 @@ void loop() {
     Serial.print("# totalCycles="); Serial.println(gTotalCycles);
     Serial.print("# droppedCycles="); Serial.println(gDroppedCycles);
     Serial.print("# worstCycle_us="); Serial.println(gWorstCycleUs);
+    Serial.print("# per-wheel replies/noReply  X="); Serial.print(gWheelReplies[0]);
+    Serial.print("/"); Serial.print(gWheelNoReply[0]);
+    Serial.print("  Y="); Serial.print(gWheelReplies[1]);
+    Serial.print("/"); Serial.print(gWheelNoReply[1]);
+    Serial.print("  Z="); Serial.print(gWheelReplies[2]);
+    Serial.print("/"); Serial.println(gWheelNoReply[2]);
+    printCanDiagnostics();
 
     const bool pass = (percentile(0.999) < 2000) && (gDroppedCycles == 0);
     Serial.print("# ================ RESULT: ");
@@ -272,4 +323,24 @@ void loop() {
 // spent servicing 3x the interrupts, not any single node's link quality --
 // look at bus loading (1 Mbps arbitration + BRS data rate, payload size x
 // 3 nodes x 400 Hz) before suspecting hardware.
+//
+// FIRST RUN, 80s: noReply was EXACTLY 2x cycles every single status line
+// (not approximately -- exactly), worstCycle_us ~11.4ms (~2 full 5ms
+// timeouts + one fast success), CAN state ACTIVE with 0 errors throughout
+// on the Stage0_SingleMoteusQuery run that preceded it. That regularity
+// argues against random bus contention and toward something structural.
+//
+// Working hypothesis, from reading Moteus.h's Poll(): it pulls exactly one
+// frame off the CanBus's shared receive queue per call and DISCARDS it
+// (does not requeue, does not hand it to another Moteus instance) if the
+// frame's source doesn't match that specific object's own options_.id.
+// With gWheels[0..2] sharing one canBus and polled sequentially inside
+// ExecuteSingleCommand()'s blocking wait loop, a reply meant for wheel B
+// arriving while wheel A is still polling can be dequeued and thrown away
+// by A's own Poll() before B ever sees it -- consistent with "whichever
+// wheel is serviced first in the loop tends to win, the other two starve."
+// NOT independently confirmed yet -- the per-wheel counters and CAN
+// diagnostics added above are the direct test: if it's the same wheel(s)
+// losing every cycle, this holds; if it rotates, it's something else
+// (check bus loading / ACAN_T4 RX FIFO depth next instead).
 // ============================================================================
