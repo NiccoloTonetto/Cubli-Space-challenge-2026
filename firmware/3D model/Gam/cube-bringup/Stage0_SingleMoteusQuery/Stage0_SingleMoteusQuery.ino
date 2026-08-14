@@ -39,7 +39,13 @@
 ACAN_T4FD_Settings canSettings(1000000, DataBitRateFactor::x1);
 MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 
-static const int8_t kMoteusId = 1;   // TODO: re-run with 2, then 3.
+static const int8_t kMoteusId = 3;   // CONFIRMED: id 3 = X-axis wheel -- PASSED
+                                       // here (20000/20000 replies, 0 errors,
+                                       // rt_us mean 984). id 1 was 0/11990
+                                       // (addressing, bus was ACTIVE throughout).
+                                       // To test a different physical wheel,
+                                       // change this and re-run -- id 2 -> Y,
+                                       // id 1 -> Z (see Gam/Skeleton_3Axis.ino).
 
 Moteus moteus1(canBus, []() {
   Moteus::Options options;

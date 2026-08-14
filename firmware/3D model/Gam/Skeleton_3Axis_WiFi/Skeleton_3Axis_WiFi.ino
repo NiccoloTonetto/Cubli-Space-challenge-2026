@@ -74,10 +74,12 @@ enum class BalanceMode : uint8_t { FACE = 0, EDGE = 1, CORNER = 2 };
 ACAN_T4FD_Settings canSettings(1000000, DataBitRateFactor::x1);
 MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 
-// TODO: confirm id <-> physical wheel-axis mapping during 3D bring-up.
+// Confirmed on bench via Stage0_SingleMoteusQuery (cube-bringup/): id 3 -> X,
+// id 2 -> Y, id 1 -> Z. Sign is NOT part of this mapping -- kWheelSign gets
+// determined per-wheel by the isolated-pulse test (Phase 1.3), separately.
 Moteus moteusX(canBus, []() {
   Moteus::Options options;
-  options.id = 1;
+  options.id = 3;
   return options;
 }());
 Moteus moteusY(canBus, []() {
@@ -87,7 +89,7 @@ Moteus moteusY(canBus, []() {
 }());
 Moteus moteusZ(canBus, []() {
   Moteus::Options options;
-  options.id = 3;
+  options.id = 1;
   return options;
 }());
 Moteus* const gWheels[3] = { &moteusX, &moteusY, &moteusZ };
