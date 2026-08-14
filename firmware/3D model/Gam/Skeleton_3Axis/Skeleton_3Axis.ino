@@ -1,5 +1,5 @@
 // ============================================================================
-// TEENSY 4.1 + 3x moteus-n1 (CAN3) + BMI270 IMU (SPI) — 3D SKELETON (EULER)
+// TEENSY 4.1 + 3x moteus-n1 (CAN3) + BMI270 IMU (SPI) — 3D SKELETON (GAM)
 // ============================================================================
 // Sibling of "firmware/3D model/Quaternion/Skeleton_3Axis/Skeleton_3Axis.ino".
 // Same CAN/IMU boilerplate, telemetry-mode selector, and serial-command
@@ -23,7 +23,7 @@
 // calculateState()'s replacement (attitudeUpdate()) is wired and live;
 // commandWheels() is an EMPTY STUB -- always commands zero torque, same as
 // the Quaternion sibling -- see the TODO inside it. Nothing LQR/state-
-// feedback-shaped is implemented yet in any of the 4 sketches (Euler/
+// feedback-shaped is implemented yet in any of the 4 sketches (Gam/
 // Quaternion x USB/WiFi). Kp/Kd/K_YAW_RATE above are declared per the
 // attitude-spec interface but not yet read anywhere.
 // ============================================================================
