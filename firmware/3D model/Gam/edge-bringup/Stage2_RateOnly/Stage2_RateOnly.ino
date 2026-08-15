@@ -278,8 +278,8 @@ static const float kMaxOmega   = 40.0f;    // rad/s, OMEGA_CAP from cubli_gains.
 static const float kTauMax     = 0.12f;    // N*m, TAU_MAX from cubli_gains.h
 static const float kTaperStart = 36.0f;    // rad/s, 90% of cap
 
-// >>> FIX THIS WITH STAGE 1'S RESULT BEFORE FLASHING. <<<
-static const float kWheelSign = 1.0f;   // PLACEHOLDER
+// CONFIRMED via Stage 1's pulse test: +1.0f is correct for this wheel.
+static const float kWheelSign = 1.0f;
 
 static Moteus::PositionMode::Format kTorqueFormat = []() {
   Moteus::PositionMode::Format f;

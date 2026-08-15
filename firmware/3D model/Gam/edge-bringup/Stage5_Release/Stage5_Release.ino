@@ -303,8 +303,8 @@ static const float kEpsFf  = 0.05f;    // rad/s
 
 static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg
 
-// >>> FIX THIS WITH STAGE 1'S RESULT BEFORE FLASHING. <<<
-static const float kWheelSign = 1.0f;   // PLACEHOLDER
+// CONFIRMED via Stage 1's pulse test: +1.0f is correct for this wheel.
+static const float kWheelSign = 1.0f;
 
 enum TripReason { TRIP_NONE = 0, TRIP_TILT = 1, TRIP_OMEGA = 2, TRIP_NAN = 3 };
 static int gTripReason = TRIP_NONE;

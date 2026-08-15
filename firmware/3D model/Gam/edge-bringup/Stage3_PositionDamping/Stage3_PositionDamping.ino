@@ -277,8 +277,8 @@ static const float kMaxOmega   = 40.0f;
 static const float kTauMax     = 0.12f;
 static const float kTaperStart = 36.0f;
 
-// >>> FIX THIS WITH STAGE 1'S RESULT BEFORE FLASHING. <<<
-static const float kWheelSign = 1.0f;   // PLACEHOLDER
+// CONFIRMED via Stage 1's pulse test: +1.0f is correct for this wheel.
+static const float kWheelSign = 1.0f;
 
 static Moteus::PositionMode::Format kTorqueFormat = []() {
   Moteus::PositionMode::Format f;

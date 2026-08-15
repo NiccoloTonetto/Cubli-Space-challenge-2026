@@ -313,8 +313,8 @@ static const float kEpsFf  = 0.05f;    // rad/s, tanh width
 // not continuously (a trip mid-run is the DISARM trips' job, not this one).
 static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg
 
-// >>> FIX THIS WITH STAGE 1'S RESULT BEFORE FLASHING. <<<
-static const float kWheelSign = 1.0f;   // PLACEHOLDER
+// CONFIRMED via Stage 1's pulse test: +1.0f is correct for this wheel.
+static const float kWheelSign = 1.0f;
 
 static Moteus::PositionMode::Format kTorqueFormat = []() {
   Moteus::PositionMode::Format f;
