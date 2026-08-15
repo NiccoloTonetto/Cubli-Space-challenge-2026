@@ -1,7 +1,9 @@
 // ============================================================================
-// TEENSY 4.1 + moteus-n1 (CAN3, id 3) + BMI270 IMU (SPI) — EDGE STAGE 3:
-// POSITION (phi_edge) + RATE
+// TEENSY 4.1 + moteus-n1 (CAN3) + BMI270 IMU (SPI) — EDGE STAGE 3:
+// POSITION (phi_edge) + RATE -- AXIS-SELECTABLE
 // ============================================================================
+// >>> SET kAxis BELOW TO MATCH THE WHEEL YOU JUST RAN STAGE 1/2 ON. <<<
+//
 // CUBE STILL HELD BY HAND. Adds K[0] (phi_edge / position) on top of K[1]
 // (rate); K[2] = 0 still. This is the first stage where a sign error CAN
 // reinforce into a runaway, which is why gGainScale starts low and is
@@ -41,9 +43,17 @@
 ACAN_T4FD_Settings canSettings(1000000, DataBitRateFactor::x1);
 MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 
-Moteus moteusY(canBus, []() {
+// Confirmed on bench, physically verified (Gam/Skeleton_3Axis.ino's mapping
+// comment): id 2 -> X, id 3 -> Y, id 1 -> Z.
+enum Axis { AXIS_X = 0, AXIS_Y = 1, AXIS_Z = 2 };
+static const Axis kAxis = AXIS_Y;   // <<< CHANGE THIS to test X or Z
+
+static const int8_t kAxisMoteusId[3] = { 2, 3, 1 };
+static const char*  kAxisName[3]     = { "X", "Y", "Z" };
+
+Moteus moteusActive(canBus, []() {
   Moteus::Options options;
-  options.id = 3;
+  options.id = kAxisMoteusId[kAxis];
   return options;
 }());
 
@@ -198,34 +208,45 @@ void attitudeUpdate(const float a_imu[3], const float w_imu[3], float dt) {
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2c: EDGE CANDIDATE (unchanged)
+// SECTION 2c: EDGE CANDIDATE (resolved fresh here too, per axis)
 // ----------------------------------------------------------------------------
 
 struct EdgeCandidate {
   const char* name;
+  float e[3];
   float gB[3];
   float K[3];
   float placeOffsetDeg;
 };
 
-static const float kEdgeE[3] = { 0.0f, 1.0f, 0.0f };
-
-static const EdgeCandidate kCandidates[2] = {
-  { "Y[+1,+1] (+X,+Z up)", { 0.707182407f, -0.0f, 0.70703119f },
-    { -9.33804893f, -1.10871983f, -0.00692820316f }, 0.006f },
-  { "Y[-1,-1] (-X,-Z up)", { -0.707020879f, -0.0f, -0.707192659f },
-    { -8.03074265f, -0.918068051f, -0.00692820316f }, 0.007f },
+static const EdgeCandidate kCandidates[3][2] = {
+  // AXIS_X (id 2) -- X[+1,+1] and X[-1,-1], offsets 0.758/0.837 deg
+  { { "X[+1,+1] (+Y,+Z up)", { 1.0f, 0.0f, 0.0f }, { -0.0f, 0.697691619f, 0.716398239f },
+      { -9.22453213f, -1.09680569f, -0.00692820316f }, 0.758f },
+    { "X[-1,-1] (-Y,-Z up)", { 1.0f, 0.0f, 0.0f }, { -0.0f, -0.717363894f, -0.696698666f },
+      { -8.2052536f, -0.948087275f, -0.00692820316f }, 0.837f } },
+  // AXIS_Y (id 3) -- Y[+1,+1] and Y[-1,-1], offsets 0.006/0.007 deg (best on the cube)
+  { { "Y[+1,+1] (+X,+Z up)", { 0.0f, 1.0f, 0.0f }, { 0.707182407f, -0.0f, 0.70703119f },
+      { -9.33804893f, -1.10871983f, -0.00692820316f }, 0.006f },
+    { "Y[-1,-1] (-X,-Z up)", { 0.0f, 1.0f, 0.0f }, { -0.707020879f, -0.0f, -0.707192659f },
+      { -8.03074265f, -0.918068051f, -0.00692820316f }, 0.007f } },
+  // AXIS_Z (id 1) -- Z[+1,+1] and Z[-1,-1], offsets 0.764/0.844 deg
+  { { "Z[+1,+1] (+X,+Y up)", { 0.0f, 0.0f, 1.0f }, { 0.716472805f, 0.697615027f, -0.0f },
+      { -9.22558498f, -1.09693909f, -0.00692820316f }, 0.764f },
+    { "Z[-1,-1] (-X,-Y up)", { 0.0f, 0.0f, 1.0f }, { -0.696611583f, -0.717448473f, -0.0f },
+      { -8.20397282f, -0.947880447f, -0.00692820316f }, 0.844f } },
 };
 
 int gEdgeIdx = 0;
 
 void resolveEdgeCandidate() {
-  const float d0 = dot3(ghat, kCandidates[0].gB);
-  const float d1 = dot3(ghat, kCandidates[1].gB);
+  const float d0 = dot3(ghat, kCandidates[kAxis][0].gB);
+  const float d1 = dot3(ghat, kCandidates[kAxis][1].gB);
   gEdgeIdx = (d0 >= d1) ? 0 : 1;
-  Serial.print("# edge candidate resolved: "); Serial.print(kCandidates[gEdgeIdx].name);
-  Serial.print("  K_phi="); Serial.print(kCandidates[gEdgeIdx].K[0], 5);
-  Serial.print("  K_om="); Serial.print(kCandidates[gEdgeIdx].K[1], 5);
+  Serial.print("# axis="); Serial.print(kAxisName[kAxis]);
+  Serial.print("  edge candidate resolved: "); Serial.print(kCandidates[kAxis][gEdgeIdx].name);
+  Serial.print("  K_phi="); Serial.print(kCandidates[kAxis][gEdgeIdx].K[0], 5);
+  Serial.print("  K_om="); Serial.print(kCandidates[kAxis][gEdgeIdx].K[1], 5);
   Serial.print("  (dot0="); Serial.print(d0, 4);
   Serial.print(" dot1="); Serial.print(d1, 4); Serial.println(")");
   if (fabsf(d0 - d1) < 0.2f) {
@@ -237,10 +258,11 @@ float phi_edge = 0.0f;
 float om_edge  = 0.0f;
 
 void updateEdgeProjection() {
+  const EdgeCandidate& c = kCandidates[kAxis][gEdgeIdx];
   float phi[3];
-  { float t[3]; cross3(kCandidates[gEdgeIdx].gB, ghat, t); phi[0]=-t[0]; phi[1]=-t[1]; phi[2]=-t[2]; }
-  phi_edge = dot3(kEdgeE, phi);
-  om_edge  = dot3(kEdgeE, w_b);
+  { float t[3]; cross3(c.gB, ghat, t); phi[0]=-t[0]; phi[1]=-t[1]; phi[2]=-t[2]; }
+  phi_edge = dot3(c.e, phi);
+  om_edge  = dot3(c.e, w_b);
 }
 
 
@@ -277,8 +299,15 @@ static const float kMaxOmega   = 40.0f;
 static const float kTauMax     = 0.12f;
 static const float kTaperStart = 36.0f;
 
-// CONFIRMED via Stage 1's pulse test: +1.0f is correct for this wheel.
-static const float kWheelSign = 1.0f;
+// Per-axis: Y confirmed via Stage 1's pulse test, X/Z still placeholders
+// pending their own Stage 1 run -- do NOT assume one wheel's sign for
+// another (Firmware Lessons S4).
+static const float kAxisWheelSign[3] = {
+  1.0f,   // X -- PLACEHOLDER
+  1.0f,   // Y -- CONFIRMED
+  1.0f,   // Z -- PLACEHOLDER
+};
+static const float kWheelSign = kAxisWheelSign[kAxis];
 
 static Moteus::PositionMode::Format kTorqueFormat = []() {
   Moteus::PositionMode::Format f;
@@ -296,7 +325,7 @@ static float gLastTauCmd = 0.0f;
 
 void commandWheel(float wheel_omega) {
   // K[2] held at zero this stage -- position + rate only.
-  const EdgeCandidate& c = kCandidates[gEdgeIdx];
+  const EdgeCandidate& c = kCandidates[kAxis][gEdgeIdx];
   float tau = -(c.K[0] * phi_edge + c.K[1] * om_edge) * gGainScale;
 
   const bool spinning_up = (tau >= 0.0f) == (wheel_omega >= 0.0f);
@@ -326,7 +355,7 @@ void commandWheel(float wheel_omega) {
   cmd.maximum_torque           = kTauMax;
   cmd.watchdog_timeout          = 0.10f;
   cmd.ignore_position_bounds    = 1.0f;
-  moteusY.SetPosition(cmd, &kTorqueFormat);
+  moteusActive.SetPosition(cmd, &kTorqueFormat);
 
   gLastTau    = tau;
   gLastTauCmd = tau_cmd;
@@ -380,6 +409,9 @@ void setup() {
   Serial.begin(115200);
   while (!Serial) {}
   Serial.println("started - EDGE STAGE 3: POSITION + RATE (cube held by hand)");
+  Serial.print("# ACTIVE AXIS: "); Serial.print(kAxisName[kAxis]);
+  Serial.print("  (moteus id "); Serial.print(kAxisMoteusId[kAxis]);
+  Serial.println(") -- confirm this matches your Stage 1/2 runs.");
 
   const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
   while (errorCode != 0) {
@@ -388,7 +420,7 @@ void setup() {
     delay(1000);
   }
 
-  moteusY.SetStop();
+  moteusActive.SetStop();
   Serial.println("all stopped");
 
   updateMountingDCM();
@@ -459,7 +491,7 @@ void loop() {
   attitudeUpdate(aImu, wImu, dt);
   updateEdgeProjection();
 
-  const auto& v = moteusY.last_result().values;
+  const auto& v = moteusActive.last_result().values;
   const float wheel_omega = kWheelSign * v.velocity * 2.0f * (float)PI;
 
   commandWheel(wheel_omega);

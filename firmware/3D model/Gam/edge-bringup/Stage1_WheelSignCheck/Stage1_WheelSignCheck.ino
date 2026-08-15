@@ -1,18 +1,21 @@
 // ============================================================================
-// TEENSY 4.1 + moteus-n1 (CAN3, id 3) + BMI270 IMU (SPI) — EDGE STAGE 1:
-// Y-WHEEL SIGN CHECK
+// TEENSY 4.1 + moteus-n1 (CAN3) + BMI270 IMU (SPI) — EDGE STAGE 1:
+// WHEEL SIGN CHECK -- AXIS-SELECTABLE
 // ============================================================================
 // CUBE HELD FIRMLY BY HAND. No feedback loop yet -- first real torque
-// command to the Y wheel, and the first real test of torque mode on THIS
-// wheel specifically. Direct analogue of the panel's
-// Stage1_OpenLoopTorque.ino (same method, same checklist shape) --
+// command to whichever wheel kAxis (below) selects, and the first real
+// test of torque mode on THAT wheel specifically. Direct analogue of the
+// panel's Stage1_OpenLoopTorque.ino (same method, same checklist shape) --
 // see Firmware Lessons S4 for why kWheelSign must be verified per wheel
 // and never assumed from another wheel's result, and S7 for why this
 // stays an isolated, feedback-free test.
 //
-// Uses moteus id 3 -- physically confirmed as the Y-axis wheel (see the
-// mapping comment in Gam/Skeleton_3Axis.ino). This is also the one wheel
-// currently powered on the bench.
+// >>> SET kAxis BELOW TO THE WHEEL YOU'RE TESTING AND RE-FLASH. <<<
+// Y (id 3) already passed Stages 1-5 on real hardware. X (id 2) and Z
+// (id 1) are UNTESTED -- each needs its own Stage 1 run before Stage 2
+// onward can be trusted for that wheel. A sign or edge-candidate result
+// from one wheel tells you NOTHING about another (Firmware Lessons S4) --
+// this file cannot skip that just because Y already worked.
 //
 // STAGE 1 CHECKLIST (~15 min) — cube held firmly by hand.
 //   Send "p" over Serial to fire ONE pulse: 0.05 N*m for 1000 ms.
@@ -68,11 +71,17 @@
 ACAN_T4FD_Settings canSettings(1000000, DataBitRateFactor::x1);
 MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 
-// Confirmed on bench, physically verified: id 3 -> Y axis. See the same
-// mapping comment in Gam/Skeleton_3Axis.ino.
-Moteus moteusY(canBus, []() {
+// Confirmed on bench, physically verified (Gam/Skeleton_3Axis.ino's mapping
+// comment): id 2 -> X, id 3 -> Y, id 1 -> Z.
+enum Axis { AXIS_X = 0, AXIS_Y = 1, AXIS_Z = 2 };
+static const Axis kAxis = AXIS_Y;   // <<< CHANGE THIS to test X or Z
+
+static const int8_t kAxisMoteusId[3] = { 2, 3, 1 };   // indexed by Axis
+static const char*  kAxisName[3]     = { "X", "Y", "Z" };
+
+Moteus moteusActive(canBus, []() {
   Moteus::Options options;
-  options.id = 3;
+  options.id = kAxisMoteusId[kAxis];
   return options;
 }());
 
@@ -250,37 +259,51 @@ void attitudeUpdate(const float a_imu[3], const float w_imu[3], float dt) {
 // ----------------------------------------------------------------------------
 // SECTION 2c: EDGE CANDIDATE -- resolved by measurement, not memory
 // ----------------------------------------------------------------------------
-// Two Y-axis edges exist in cubli_gains.h, both with the same edge
-// direction e=[0,1,0] but opposite-ish gB (which pair of transverse
-// corners is up). Verbal description flipped twice already this session
-// (see the id<->axis mapping saga) -- not doing that again here. This
+// Each axis has TWO best-placement edges in cubli_gains.h (smallest
+// placement offset = best balancing feature for that axis -- the same
+// selection logic that picked Y[+1,+1]/Y[-1,-1] originally), same edge
+// direction within a pair but opposite-ish gB (which pair of transverse
+// corners is up). Verbal description flipped twice for Y this session
+// (see the id<->axis mapping saga) -- not doing that again for X/Z. This
 // picks whichever candidate's gB the MEASURED ghat actually agrees with,
 // at startup, and prints the answer instead of assuming it.
 
 struct EdgeCandidate {
   const char* name;
+  float e[3];             // edge direction
   float gB[3];
-  float K[3];            // [K_phi, K_om, K_rho] -- only K[1] used until Stage 2
+  float K[3];             // [K_phi, K_om, K_rho] -- only K[1] used until Stage 2
   float placeOffsetDeg;
 };
 
-static const float kEdgeE[3] = { 0.0f, 1.0f, 0.0f };   // edge direction, same both ways
-
-static const EdgeCandidate kCandidates[2] = {
-  { "Y[+1,+1] (+X,+Z up)", { 0.707182407f, -0.0f, 0.70703119f },
-    { -9.33804893f, -1.10871983f, -0.00692820316f }, 0.006f },
-  { "Y[-1,-1] (-X,-Z up)", { -0.707020879f, -0.0f, -0.707192659f },
-    { -8.03074265f, -0.918068051f, -0.00692820316f }, 0.007f },
+// kCandidates[axis][0..1], both entries from cubli_gains.h's EDGE table.
+static const EdgeCandidate kCandidates[3][2] = {
+  // AXIS_X (id 2) -- X[+1,+1] and X[-1,-1], offsets 0.758/0.837 deg
+  { { "X[+1,+1] (+Y,+Z up)", { 1.0f, 0.0f, 0.0f }, { -0.0f, 0.697691619f, 0.716398239f },
+      { -9.22453213f, -1.09680569f, -0.00692820316f }, 0.758f },
+    { "X[-1,-1] (-Y,-Z up)", { 1.0f, 0.0f, 0.0f }, { -0.0f, -0.717363894f, -0.696698666f },
+      { -8.2052536f, -0.948087275f, -0.00692820316f }, 0.837f } },
+  // AXIS_Y (id 3) -- Y[+1,+1] and Y[-1,-1], offsets 0.006/0.007 deg (best on the cube)
+  { { "Y[+1,+1] (+X,+Z up)", { 0.0f, 1.0f, 0.0f }, { 0.707182407f, -0.0f, 0.70703119f },
+      { -9.33804893f, -1.10871983f, -0.00692820316f }, 0.006f },
+    { "Y[-1,-1] (-X,-Z up)", { 0.0f, 1.0f, 0.0f }, { -0.707020879f, -0.0f, -0.707192659f },
+      { -8.03074265f, -0.918068051f, -0.00692820316f }, 0.007f } },
+  // AXIS_Z (id 1) -- Z[+1,+1] and Z[-1,-1], offsets 0.764/0.844 deg
+  { { "Z[+1,+1] (+X,+Y up)", { 0.0f, 0.0f, 1.0f }, { 0.716472805f, 0.697615027f, -0.0f },
+      { -9.22558498f, -1.09693909f, -0.00692820316f }, 0.764f },
+    { "Z[-1,-1] (-X,-Y up)", { 0.0f, 0.0f, 1.0f }, { -0.696611583f, -0.717448473f, -0.0f },
+      { -8.20397282f, -0.947880447f, -0.00692820316f }, 0.844f } },
 };
 
 int gEdgeIdx = 0;
 
 void resolveEdgeCandidate() {
-  const float d0 = dot3(ghat, kCandidates[0].gB);
-  const float d1 = dot3(ghat, kCandidates[1].gB);
+  const float d0 = dot3(ghat, kCandidates[kAxis][0].gB);
+  const float d1 = dot3(ghat, kCandidates[kAxis][1].gB);
   gEdgeIdx = (d0 >= d1) ? 0 : 1;
-  Serial.print("# edge candidate resolved: "); Serial.print(kCandidates[gEdgeIdx].name);
-  Serial.print("  place_offset="); Serial.print(kCandidates[gEdgeIdx].placeOffsetDeg, 3);
+  Serial.print("# axis="); Serial.print(kAxisName[kAxis]);
+  Serial.print("  edge candidate resolved: "); Serial.print(kCandidates[kAxis][gEdgeIdx].name);
+  Serial.print("  place_offset="); Serial.print(kCandidates[kAxis][gEdgeIdx].placeOffsetDeg, 3);
   Serial.print(" deg  (dot0="); Serial.print(d0, 4);
   Serial.print(" dot1="); Serial.print(d1, 4); Serial.println(")");
   if (fabsf(d0 - d1) < 0.2f) {
@@ -293,10 +316,11 @@ float phi_edge = 0.0f;
 float om_edge  = 0.0f;
 
 void updateEdgeProjection() {
+  const EdgeCandidate& c = kCandidates[kAxis][gEdgeIdx];
   float phi[3];
-  { float t[3]; cross3(kCandidates[gEdgeIdx].gB, ghat, t); phi[0]=-t[0]; phi[1]=-t[1]; phi[2]=-t[2]; }
-  phi_edge = dot3(kEdgeE, phi);
-  om_edge  = dot3(kEdgeE, w_b);
+  { float t[3]; cross3(c.gB, ghat, t); phi[0]=-t[0]; phi[1]=-t[1]; phi[2]=-t[2]; }
+  phi_edge = dot3(c.e, phi);
+  om_edge  = dot3(c.e, w_b);
 }
 
 
@@ -327,12 +351,19 @@ static float    gTauPulse       = 0.05f;   // N*m -- live-settable, see "t<Nm>".
 static const uint32_t kPulseDurationMs = 1000;
 static const float kTauMax      = 0.12f;   // N*m, TAU_MAX from cubli_gains.h
 
-// UNKNOWN until this stage determines it -- do NOT copy the panel's -1.0f
-// blindly, this is a different wheel with its own physical mounting.
-// Applied to the OUTGOING command only in this stage -- telemetry
-// (wheel_pos/wheel_vel/moteus_torque/qcurrent) intentionally still shows
-// the raw, unflipped moteus convention here, same as the panel's Stage 1.
-static const float kWheelSign = 1.0f;   // PLACEHOLDER -- fix after this test
+// UNKNOWN until THIS RUN, for THIS axis, determines it -- do NOT copy
+// another wheel's confirmed value, each has its own physical mounting.
+// Y is confirmed; X and Z are still placeholders pending their own run of
+// this stage. Applied to the OUTGOING command only in this stage --
+// telemetry (wheel_pos/wheel_vel/moteus_torque/qcurrent) intentionally
+// still shows the raw, unflipped moteus convention here, same as the
+// panel's Stage 1.
+static const float kAxisWheelSign[3] = {
+  1.0f,   // X -- PLACEHOLDER, run this stage with kAxis=AXIS_X to confirm
+  1.0f,   // Y -- CONFIRMED on real hardware
+  1.0f,   // Z -- PLACEHOLDER, run this stage with kAxis=AXIS_Z to confirm
+};
+static const float kWheelSign = kAxisWheelSign[kAxis];
 
 static Moteus::PositionMode::Format kTorqueFormat = []() {
   Moteus::PositionMode::Format f;
@@ -374,7 +405,7 @@ void commandWheel() {
   cmd.maximum_torque           = kTauMax;
   cmd.watchdog_timeout          = 0.10f;
   cmd.ignore_position_bounds    = 1.0f;
-  moteusY.SetPosition(cmd, &kTorqueFormat);
+  moteusActive.SetPosition(cmd, &kTorqueFormat);
 
   gLastTau = tau;
 }
@@ -431,7 +462,10 @@ void handleSerialCommands() {
 void setup() {
   Serial.begin(115200);
   while (!Serial) {}
-  Serial.println("started - EDGE STAGE 1: Y-WHEEL SIGN CHECK (cube held by hand)");
+  Serial.println("started - EDGE STAGE 1: WHEEL SIGN CHECK (cube held by hand)");
+  Serial.print("# ACTIVE AXIS: "); Serial.print(kAxisName[kAxis]);
+  Serial.print("  (moteus id "); Serial.print(kAxisMoteusId[kAxis]);
+  Serial.println(") -- confirm this is the wheel you mean to pulse.");
 
   const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
   while (errorCode != 0) {
@@ -440,7 +474,7 @@ void setup() {
     delay(1000);
   }
 
-  moteusY.SetStop();
+  moteusActive.SetStop();
   Serial.println("all stopped");
 
   updateMountingDCM();
@@ -521,7 +555,7 @@ void loop() {
   updateEdgeProjection();
 
   commandWheel();
-  const auto& v = moteusY.last_result().values;
+  const auto& v = moteusActive.last_result().values;
 
   printState(time, gLastTau, gPulseActive, v);
 }   // end of loop()
@@ -531,8 +565,9 @@ void loop() {
 // NOTES
 // ----------------------------------------------------------------------------
 // Next: Stage2_RateOnly/Stage2_RateOnly.ino -- first closed-loop term
-// (om_edge/rate damping only), still hand-held. Fix kWheelSign above with
-// this stage's result FIRST -- do not proceed with the +1.0f placeholder.
-// This is also where the safety scaffold (latching trips) gets introduced,
-// same shape as the panel's Stage 2.
+// (om_edge/rate damping only), still hand-held. Set kAxis there to MATCH
+// what you just ran here, and fix kAxisWheelSign[kAxis] with this stage's
+// result FIRST -- do not proceed with a placeholder for whichever axis
+// you're testing. This is also where the safety scaffold (latching trips)
+// gets introduced, same shape as the panel's Stage 2.
 // ============================================================================
