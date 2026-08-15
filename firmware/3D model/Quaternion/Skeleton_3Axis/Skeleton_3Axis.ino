@@ -54,21 +54,24 @@ MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 
 // Three drivers on one CAN3 FD bus, addressed by id -- same bus wiring as
 // the 2D sketch's single moteus1, just three nodes instead of one.
-// TODO: confirm id <-> physical wheel-axis mapping during 3D bring-up
-// (set/verified per-driver via tview, same as the 2D sketch's moteus1).
+// Confirmed on bench, physically verified per wheel, via Stage0_SingleMoteusQuery
+// (cube-bringup/, gam build -- this is hardware fact, not representation-
+// specific): id 2 -> X, id 3 -> Y, id 1 -> Z. Sign is NOT part of this
+// mapping -- kWheelSign gets determined per-wheel by the isolated-pulse test
+// (Phase 1.3), separately.
 Moteus moteusX(canBus, []() {
-  Moteus::Options options;
-  options.id = 1;
-  return options;
-}());
-Moteus moteusY(canBus, []() {
   Moteus::Options options;
   options.id = 2;
   return options;
 }());
-Moteus moteusZ(canBus, []() {
+Moteus moteusY(canBus, []() {
   Moteus::Options options;
   options.id = 3;
+  return options;
+}());
+Moteus moteusZ(canBus, []() {
+  Moteus::Options options;
+  options.id = 1;
   return options;
 }());
 Moteus* const gWheels[3] = { &moteusX, &moteusY, &moteusZ };

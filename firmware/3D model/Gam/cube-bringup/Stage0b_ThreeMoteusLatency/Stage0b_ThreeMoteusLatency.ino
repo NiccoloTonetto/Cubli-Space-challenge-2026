@@ -46,9 +46,11 @@ static Moteus::Options MakeOptions(int8_t id) {
   return options;
 }
 
-Moteus moteusX(canBus, MakeOptions(1));
-Moteus moteusY(canBus, MakeOptions(2));
-Moteus moteusZ(canBus, MakeOptions(3));
+// Confirmed on bench, physically verified per wheel, via
+// Stage0_SingleMoteusQuery: id 2 -> X, id 3 -> Y, id 1 -> Z.
+Moteus moteusX(canBus, MakeOptions(2));
+Moteus moteusY(canBus, MakeOptions(3));
+Moteus moteusZ(canBus, MakeOptions(1));
 Moteus* const gWheels[3] = { &moteusX, &moteusY, &moteusZ };
 
 static const uint32_t kPeriodUs   = 2500;          // 400 Hz, matches FS_HZ in cubli_gains.h

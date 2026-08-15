@@ -39,7 +39,12 @@
 ACAN_T4FD_Settings canSettings(1000000, DataBitRateFactor::x1);
 MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 
-static const int8_t kMoteusId = 1;   // TODO: re-run with 2, then 3.
+static const int8_t kMoteusId = 2;   // All three IDs now confirmed replying.
+                                       // Physically-verified mapping: id 2 -> X,
+                                       // id 3 -> Y, id 1 -> Z (see the same
+                                       // mapping comment in Gam/Skeleton_3Axis.ino).
+                                       // Change this to re-run Phase 0.2 against
+                                       // a specific wheel individually.
 
 Moteus moteus1(canBus, []() {
   Moteus::Options options;
