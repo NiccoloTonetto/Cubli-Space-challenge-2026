@@ -18,16 +18,18 @@
 //
 // EXPECTED RESULT (mega-prompt section 5, ideal-sim figure):
 //   Recoverable tilt: 2.45 deg
-// Real hardware will likely fall short -- quantization, noise, delay,
-// friction, AND the fact the battery cable/DC-DC aren't mounted yet all
-// eat into margin. Per your own assessment, the COM should still sit close
-// to the balancing axis with those parts missing, so the equilibrium
-// LEAN shouldn't move much -- but Sg/lambda (and therefore how well THIS
-// K performs) could still be mildly off from the final mass distribution.
-// If it's stable but sluggish or slightly offset, that's consistent with
-// a plant mismatch, not necessarily a sign/wiring bug -- re-derive K once
-// the final mass is on, same workflow as everywhere else in this project
-// (measure -> derive -> re-tune).
+// Real hardware will likely fall short -- quantization, noise, delay, and
+// friction all eat into margin regardless. The equilibrium LEAN turned out
+// to move MORE than expected with the battery cable/DC-DC missing --
+// measured at 2.544 deg, not the near-zero shift the axis-symmetry
+// argument predicted. kPhiOffset (below) corrects for that so the loop
+// targets this build's real balance point instead of refusing to arm
+// against one that doesn't exist yet -- but Sg/lambda (and therefore how
+// well THIS K performs) are still whatever they are for the current, not
+// final, mass distribution. If it's stable but sluggish, that's consistent
+// with a plant mismatch, not necessarily a sign/wiring bug -- re-derive K
+// once the final mass is on, same workflow as everywhere else in this
+// project (measure -> derive -> re-tune).
 //
 // STAGE 5 PROCEDURE:
 //   1. Cube resting on the Y edge, near vertical (arm gate needs this).
@@ -254,10 +256,18 @@ void resolveEdgeCandidate() {
 float phi_edge = 0.0f;
 float om_edge  = 0.0f;
 
+// Live-settable, NOT a sensor/mount calibration (see Stage 4's header for
+// the full reasoning) -- corrects for the cube's CURRENT physical resting
+// point being genuinely offset from the designed equilibrium (2.544 deg
+// measured, missing battery cable/DC-DC). Set live with "o<deg>". Reset to
+// 0 once the missing mass is mounted and the real equilibrium moves back
+// near cubli_gains.h's ~0.006-0.007 deg design value.
+static float kPhiOffset = 0.0f;
+
 void updateEdgeProjection() {
   float phi[3];
   { float t[3]; cross3(kCandidates[gEdgeIdx].gB, ghat, t); phi[0]=-t[0]; phi[1]=-t[1]; phi[2]=-t[2]; }
-  phi_edge = dot3(kEdgeE, phi);
+  phi_edge = dot3(kEdgeE, phi) - kPhiOffset;
   om_edge  = dot3(kEdgeE, w_b);
 }
 
@@ -408,6 +418,9 @@ void handleSerialCommands() {
       gArmed = false;
       Serial.println("# gArmed = FALSE");
     }
+  } else if (cmd == 'o') {
+    kPhiOffset = val * (float)DEG_TO_RAD;
+    Serial.print("# kPhiOffset = "); Serial.print(val, 4); Serial.println(" deg");
   } else if (cmd == 'e') {
     resolveEdgeCandidate();
   } else if (cmd == 'r') {
@@ -429,7 +442,7 @@ void handleSerialCommands() {
     Serial.println(gHalted ? "TRUE (idle -- no IMU reads, no CAN traffic)"
                             : "FALSE (resumed, still DISARMED -- send a1)");
   } else {
-    Serial.println("# unknown. use: a<0/1>  e (re-resolve)  r<deg> (log marker)  h<0/1>");
+    Serial.println("# unknown. use: a<0/1>  o<deg>  e (re-resolve)  r<deg> (log marker)  h<0/1>");
   }
 }
 
@@ -486,6 +499,10 @@ void setup() {
   Serial.println("t_ms\tphi_edge_deg\tom_edge_dps\ttau_Nm\ttau_cmd_Nm\tarmed\t"
                   "trip_reason\twheel_omega_lp\twheel_pos\twheel_vel");
   Serial.println("# STARTS DISARMED. Stop/catch + e-stop ready BEFORE sending a1.");
+  Serial.println("# o<deg> sets kPhiOffset for the current build's actual");
+  Serial.println("# resting point (measured 2.544 deg without battery cable/DC-DC)");
+  Serial.println("# -- reset to 0 once those parts are mounted. Velocity cap is");
+  Serial.println("# the REAL policy here (unlike Stage 4) -- OMEGA_CAP = 40 rad/s.");
   Serial.println("# trip_reason: 0 none  1 tilt  2 omega  3 nan");
   Serial.println("# h1 halts (idle + disarm), h0 resumes (still disarmed).");
 

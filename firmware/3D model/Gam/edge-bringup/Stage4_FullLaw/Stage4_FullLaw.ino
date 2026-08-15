@@ -22,6 +22,17 @@
 //       sign after a 180-deg rotation about the edge means a COM/mount
 //       issue, not reversing means gyro bias).
 //
+// TWO ADDITIONS since Stage 3, both requested for this specific build:
+//   - "o<deg>" sets kPhiOffset, live. The cube's ACTUAL resting point right
+//     now measures 2.544 deg off vertical (battery cable + DC-DC not
+//     mounted yet) -- without correcting for that, the 0.5 deg arm gate
+//     below would refuse to ever arm. This is a real physical offset, not
+//     a sensor calibration -- reset it to 0 once those parts are on.
+//   - Velocity cap REMOVED (kMaxOmega effectively infinite). The taper was
+//     choking off spin-up torque before the wheel reached enough momentum
+//     to recover. TAU_MAX is untouched. Disarm ("a0") is the safety net
+//     for this stage, by explicit choice -- Stage 5 keeps the real cap.
+//
 // Trips here are still LOOSE (hand-held, watching combined-term behavior)
 // -- Stage 5 tightens to the real DISARM policy from cubli_gains.h.
 // ============================================================================
@@ -246,10 +257,23 @@ void resolveEdgeCandidate() {
 float phi_edge = 0.0f;
 float om_edge  = 0.0f;
 
+// Live-settable, NOT a sensor/mount calibration (that's already handled by
+// gMountDCM and the accel/gyro constants above) -- this corrects for the
+// cube's CURRENT physical resting point being genuinely offset from the
+// designed equilibrium (2.544 deg measured, missing battery cable/DC-DC).
+// Same convention as the panel's kThetaOffset: set live with "o<deg>",
+// subtracted from phi_edge everywhere it's used below (control, trips, arm
+// gate, telemetry) so the loop targets THIS build's real balance point
+// instead of refusing to arm against an equilibrium that doesn't exist
+// yet. Reset to 0 once the missing mass is mounted and the real
+// equilibrium moves back near cubli_gains.h's ~0.006-0.007 deg design
+// value -- this is an interim-build correction, not a permanent one.
+static float kPhiOffset = 0.0f;
+
 void updateEdgeProjection() {
   float phi[3];
   { float t[3]; cross3(kCandidates[gEdgeIdx].gB, ghat, t); phi[0]=-t[0]; phi[1]=-t[1]; phi[2]=-t[2]; }
-  phi_edge = dot3(kEdgeE, phi);
+  phi_edge = dot3(kEdgeE, phi) - kPhiOffset;
   om_edge  = dot3(kEdgeE, w_b);
 }
 
@@ -297,9 +321,21 @@ static float gGainScale = 1.0f;   // already validated through Stage 3's ramp
 // Loose this stage -- hand-held, watching combined-term behavior. Stage 5
 // tightens to the real DISARM/OMEGA_CAP policy from cubli_gains.h.
 static const float kMaxTilt    = 0.4363f;   // rad, 25 deg
-static const float kMaxOmega   = 200.0f;    // rad/s
+// Velocity cap REMOVED for this stage, on request: the taper was choking
+// off spin-up torque before the wheel reached enough momentum to actually
+// recover, and TAU_MAX (the real torque saturation, below) is untouched --
+// this only affects the momentum policy, not the physical torque limit.
+// Same "omega_cap = inf" mode the envelope docs describe for uncapped
+// testing. Cube is hand-held and you're arming with the explicit intent to
+// disarm ("a0") if it runs away -- that's the actual safety mechanism
+// here, not this constant. Do NOT carry this into Stage 5: that stage
+// keeps the real 40 rad/s OMEGA_CAP because it runs unsupported.
+static const float kMaxOmega   = 1.0e6f;    // rad/s -- effectively uncapped
 static const float kTauMax     = 0.12f;     // N*m, TAU_MAX
-static const float kTaperStart = 36.0f;     // rad/s
+static const float kTaperStart = 36.0f;     // rad/s -- irrelevant now: with
+                                              // kMaxOmega this large, the
+                                              // taper's fade factor stays
+                                              // ~1.0 for any real wheel speed
 
 // Friction feedforward -- Firmware Lessons: "not optional". PLACEHOLDER
 // values from cubli_gains.h pending the real spin-down/breakaway test.
@@ -407,11 +443,14 @@ void handleSerialCommands() {
   } else if (cmd == 'g') {
     gGainScale = val < 0.0f ? 0.0f : (val > 1.0f ? 1.0f : val);
     Serial.print("# gGainScale = "); Serial.println(gGainScale, 3);
+  } else if (cmd == 'o') {
+    kPhiOffset = val * (float)DEG_TO_RAD;
+    Serial.print("# kPhiOffset = "); Serial.print(val, 4); Serial.println(" deg");
   } else if (cmd == 'e') {
     resolveEdgeCandidate();
 #if TELEMETRY_MODE == SERIALMONITORMODE
   } else {
-    Serial.println("# unknown. use: a<0/1>  g<0..1>  e (re-resolve)");
+    Serial.println("# unknown. use: a<0/1>  g<0..1>  o<deg>  e (re-resolve)");
 #endif
   }
 }
@@ -471,6 +510,10 @@ void setup() {
                   "gain_scale\twheel_omega_lp\twheel_pos\twheel_vel");
   Serial.println("# STARTS DISARMED. Position near vertical, then send a1");
   Serial.println("# (arm gate: refuses unless |phi_edge| < 0.5 deg).");
+  Serial.println("# o<deg> sets kPhiOffset for the current build's actual");
+  Serial.println("# resting point (measured 2.544 deg without battery cable/DC-DC)");
+  Serial.println("# -- reset to 0 once those parts are mounted.");
+  Serial.println("# velocity cap REMOVED this stage -- disarm (a0) is the safety net.");
 #endif
 
   gNextSendMillis = millis();
