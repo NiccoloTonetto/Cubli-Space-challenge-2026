@@ -37,6 +37,14 @@ files should hardcode a moteus id.
 | `Stage4_FullLaw/` | Yes — closed loop | Adds momentum management (`K[2]`), friction feedforward, the real arm gate (0.5°), live `kPhiOffset` (`o<deg>`), velocity cap removed for this stage only |
 | `Stage5_Release/` | Yes — closed loop, unsupported | Real `DISARM`/`OMEGA_CAP` trip policy (velocity cap restored to 40 rad/s), latched trip-reason, the actual balancing attempt |
 
+## Final builds
+
+Once bring-up is done, the two builds you actually run live in
+[`../edge-balance-final/`](../edge-balance-final/): a byte-identical copy of
+`Stage4_FullLaw/` (USB) alongside `Stage4_FullLaw_WiFi/`, the same control law
+with a Serial1→XIAO→WiFi/UDP telemetry+command link so the cube runs
+untethered. That folder's README carries the end-to-end flashing procedure.
+
 ## What's genuinely new here, not copied from the panel
 
 The panel's `atan2` estimator trick is 2D/45°-mount specific and does not
