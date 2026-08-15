@@ -53,17 +53,16 @@ Moteus moteusY(canBus, MakeOptions(3));
 Moteus moteusZ(canBus, MakeOptions(1));
 Moteus* const gWheels[3] = { &moteusX, &moteusY, &moteusZ };
 
-// DIAGNOSTIC ONLY -- not a fix, and not meant to ship. Second run (X=100%,
-// Y=Z=0%, every cycle) is consistent with EITHER the shared-receive-queue
-// discard theory (see NOTES) OR contention on ACAN_T4's single dedicated
-// TX mailbox for CAN-FD data frames (tryToSendDataFrameFD uses exactly one
-// hardware mailbox, not one per node, backed by a 16-deep software buffer).
-// Source reading alone can't tell which -- this is the cheap test. If a
-// gap here changes the 100/0/0 pattern at all, that implicates timing/
-// mailbox contention; if it makes no difference, that points back at the
-// receive-discard theory instead. Set to 0 to restore the original
-// back-to-back behavior once this has told us something.
-static const uint32_t kInterQueryDelayUs = 300;
+// RESOLVED -- both the "first wheel wins" and "second wheel wins" runs
+// were explained by only ONE of the three moteus units actually being
+// powered at a time (single supply, swapped between wheels), not a CAN/
+// ACAN_T4 software issue. The receive-discard and single-TX-mailbox
+// theories investigated below are real properties of the library, worth
+// remembering if genuine 3-way contention ever shows up once all three
+// are powered together -- but they were not the cause here. Left at 0
+// (disabled) so this sketch is clean for the real test once the battery
+// is soldered to all three moteus.
+static const uint32_t kInterQueryDelayUs = 0;
 
 static const uint32_t kPeriodUs   = 2500;          // 400 Hz, matches FS_HZ in cubli_gains.h
 static const uint32_t kDurationUs = 600000000UL;   // 10 minutes
@@ -337,23 +336,23 @@ void loop() {
 // look at bus loading (1 Mbps arbitration + BRS data rate, payload size x
 // 3 nodes x 400 Hz) before suspecting hardware.
 //
-// FIRST RUN, 80s: noReply was EXACTLY 2x cycles every single status line
-// (not approximately -- exactly), worstCycle_us ~11.4ms (~2 full 5ms
-// timeouts + one fast success), CAN state ACTIVE with 0 errors throughout
-// on the Stage0_SingleMoteusQuery run that preceded it. That regularity
-// argues against random bus contention and toward something structural.
+// RESOLVED (was NOT a software bug): two runs, each 100% replies on
+// exactly one wheel and 0% on the other two -- but WHICH wheel won
+// flipped between runs (X first, then Y), which finally gave it away:
+// only one moteus was actually powered at a time (single supply, moved
+// between wheels), not all three. An unpowered node can't reply at the
+// application layer but the one that IS powered still ACKs every frame
+// at the CAN protocol level regardless of destination -- consistent with
+// CAN state staying ACTIVE / 0 errors throughout both runs. Re-run this
+// sketch for real once the battery is soldered to all three.
 //
-// Working hypothesis, from reading Moteus.h's Poll(): it pulls exactly one
-// frame off the CanBus's shared receive queue per call and DISCARDS it
-// (does not requeue, does not hand it to another Moteus instance) if the
-// frame's source doesn't match that specific object's own options_.id.
-// With gWheels[0..2] sharing one canBus and polled sequentially inside
-// ExecuteSingleCommand()'s blocking wait loop, a reply meant for wheel B
-// arriving while wheel A is still polling can be dequeued and thrown away
-// by A's own Poll() before B ever sees it -- consistent with "whichever
-// wheel is serviced first in the loop tends to win, the other two starve."
-// NOT independently confirmed yet -- the per-wheel counters and CAN
-// diagnostics added above are the direct test: if it's the same wheel(s)
-// losing every cycle, this holds; if it rotates, it's something else
-// (check bus loading / ACAN_T4 RX FIFO depth next instead).
+// Two theories were investigated and ruled out as THE cause here, but are
+// real properties of the library worth remembering if genuine 3-way
+// contention ever does show up once all three are powered together:
+//   1. Moteus::Poll() pulls one frame off the shared CanBus receive queue
+//      per call and discards it (no requeue, no handoff to another Moteus
+//      instance) if the source doesn't match that object's own options_.id.
+//   2. ACAN_T4's tryToSendDataFrameFD() uses exactly ONE dedicated hardware
+//      TX mailbox for CAN-FD data frames (not one per node), backed by a
+//      16-deep software buffer.
 // ============================================================================
