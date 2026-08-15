@@ -13,7 +13,7 @@
 //
 // >>> SET kAxis BELOW TO MATCH THE WHEEL YOU JUST RAN STAGE 1 ON. <<<
 // kAxisWheelSign[kAxis] must be confirmed for THAT axis before flashing --
-// Y is confirmed, X/Z are still placeholders until their own Stage 1 runs.
+// all three (X/Y/Z) are now confirmed via their own Stage 1 runs.
 //
 // STAGE 2 CHECKLIST (~20 min) — cube held by hand.
 //   Send "a1" to arm (gGainScale fixed at 1.0 this stage).
@@ -301,13 +301,14 @@ static const float kMaxOmega   = 40.0f;    // rad/s, OMEGA_CAP from cubli_gains.
 static const float kTauMax     = 0.12f;    // N*m, TAU_MAX from cubli_gains.h
 static const float kTaperStart = 36.0f;    // rad/s, 90% of cap
 
-// Per-axis: Y confirmed via Stage 1's pulse test, X/Z still placeholders
-// pending their own Stage 1 run -- do NOT assume one wheel's sign for
-// another (Firmware Lessons S4).
+// Per-axis: all three confirmed via each axis's own Stage 1 pulse test
+// (+1.0f for X and Z too, same as Y -- no sign flip needed on this build).
+// Re-verify per axis rather than assuming if the mount or wiring changes
+// (Firmware Lessons S4).
 static const float kAxisWheelSign[3] = {
-  1.0f,   // X -- PLACEHOLDER
+  1.0f,   // X -- CONFIRMED
   1.0f,   // Y -- CONFIRMED
-  1.0f,   // Z -- PLACEHOLDER
+  1.0f,   // Z -- CONFIRMED
 };
 static const float kWheelSign = kAxisWheelSign[kAxis];
 

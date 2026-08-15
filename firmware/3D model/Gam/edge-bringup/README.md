@@ -74,26 +74,21 @@ resolves the second index **by measurement, not memory** — at startup, it
 compares the measured `ghat` against both of the active axis's candidate
 `gB` vectors and picks whichever one it actually agrees with, printing the
 answer and a warning if the two are too close to call. Re-run with the `e`
-serial command any time. (Y is the one physically measured on the cube so
-far — near-zero placement offset either way. X and Z's offsets above are
-`cubli_gains.h`'s design values, not yet bench-confirmed.)
+serial command any time.
+
+## Hardware status
+
+All three wheels (X, Y, Z) have been run through the staged bring-up and
+balance successfully on their respective edges. `kAxisWheelSign[3]` is
+`+1.0f` across the board and confirmed for all three via each axis's own
+Stage 1 pulse test — no sign flip was needed on this build. Re-verify per
+axis rather than assuming it still holds if the mount or wiring changes
+(Firmware Lessons S4).
 
 ## What's still open
 
-- **`kAxisWheelSign[3]`** — only the Y entry is confirmed (`+1.0f`, via
-  Stage 1's pulse test on the Y wheel). X and Z are still placeholders
-  (`+1.0f`) until their own Stage 1 run determines them — **do not assume
-  one wheel's sign carries over to another** (Firmware Lessons S4). Fix the
-  placeholder in Stages 2-5 by hand once each axis's Stage 1 confirms it,
-  same as the panel required.
 - **IMU calibration** is still the 2D panel's numbers, copied forward with
   the same TODO as `Gam/Skeleton_3Axis.ino`. Telemetry-only risk in Stage 1
   (no feedback loop yet); a real accuracy problem from Stage 2 onward.
-- **X and Z edges are otherwise untested** — only the Y wheel/edge has been
-  run through hardware so far (through Stage 4). Re-run the full Stage 1→5
-  sequence per axis; nothing about passing on Y guarantees X or Z pass
-  without their own bring-up (different `kWheelSign`, different measured
-  placement offset, different plant details from the wheel's own inertia
-  and mount).
 - **`Gam/Skeleton_3Axis.ino`'s own estimator** still needs the LERP→kP/kI
   filter swap these files already carry — separate, not done by this folder.

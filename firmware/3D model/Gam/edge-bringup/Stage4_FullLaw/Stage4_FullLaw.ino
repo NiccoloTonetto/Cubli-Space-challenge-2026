@@ -374,13 +374,14 @@ static const float kEpsFf  = 0.05f;    // rad/s, tanh width
 // not continuously (a trip mid-run is the DISARM trips' job, not this one).
 static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg
 
-// Per-axis: Y confirmed via Stage 1's pulse test, X/Z still placeholders
-// pending their own Stage 1 run -- do NOT assume one wheel's sign for
-// another (Firmware Lessons S4).
+// Per-axis: all three confirmed via each axis's own Stage 1 pulse test
+// (+1.0f for X and Z too, same as Y -- no sign flip needed on this build).
+// Re-verify per axis rather than assuming if the mount or wiring changes
+// (Firmware Lessons S4).
 static const float kAxisWheelSign[3] = {
-  1.0f,   // X -- PLACEHOLDER
+  1.0f,   // X -- CONFIRMED
   1.0f,   // Y -- CONFIRMED
-  1.0f,   // Z -- PLACEHOLDER
+  1.0f,   // Z -- CONFIRMED
 };
 static const float kWheelSign = kAxisWheelSign[kAxis];
 

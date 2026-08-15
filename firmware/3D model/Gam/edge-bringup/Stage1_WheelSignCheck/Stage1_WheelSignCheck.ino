@@ -351,17 +351,17 @@ static float    gTauPulse       = 0.05f;   // N*m -- live-settable, see "t<Nm>".
 static const uint32_t kPulseDurationMs = 1000;
 static const float kTauMax      = 0.12f;   // N*m, TAU_MAX from cubli_gains.h
 
-// UNKNOWN until THIS RUN, for THIS axis, determines it -- do NOT copy
-// another wheel's confirmed value, each has its own physical mounting.
-// Y is confirmed; X and Z are still placeholders pending their own run of
-// this stage. Applied to the OUTGOING command only in this stage --
-// telemetry (wheel_pos/wheel_vel/moteus_torque/qcurrent) intentionally
-// still shows the raw, unflipped moteus convention here, same as the
-// panel's Stage 1.
+// Confirmed for all three axes via their own run of this stage -- +1.0f
+// across the board, no sign flip needed on this build. Re-verify per axis
+// rather than assuming if the mount or wiring changes; do not copy another
+// wheel's confirmed value onto a rebuild without re-running this stage.
+// Applied to the OUTGOING command only in this stage -- telemetry
+// (wheel_pos/wheel_vel/moteus_torque/qcurrent) intentionally still shows
+// the raw, unflipped moteus convention here, same as the panel's Stage 1.
 static const float kAxisWheelSign[3] = {
-  1.0f,   // X -- PLACEHOLDER, run this stage with kAxis=AXIS_X to confirm
+  1.0f,   // X -- CONFIRMED on real hardware
   1.0f,   // Y -- CONFIRMED on real hardware
-  1.0f,   // Z -- PLACEHOLDER, run this stage with kAxis=AXIS_Z to confirm
+  1.0f,   // Z -- CONFIRMED on real hardware
 };
 static const float kWheelSign = kAxisWheelSign[kAxis];
 
