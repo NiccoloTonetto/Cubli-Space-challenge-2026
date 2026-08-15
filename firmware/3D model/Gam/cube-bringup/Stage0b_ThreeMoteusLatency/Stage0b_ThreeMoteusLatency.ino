@@ -53,6 +53,17 @@ Moteus moteusY(canBus, MakeOptions(3));
 Moteus moteusZ(canBus, MakeOptions(1));
 Moteus* const gWheels[3] = { &moteusX, &moteusY, &moteusZ };
 
+// RESOLVED -- both the "first wheel wins" and "second wheel wins" runs
+// were explained by only ONE of the three moteus units actually being
+// powered at a time (single supply, swapped between wheels), not a CAN/
+// ACAN_T4 software issue. The receive-discard and single-TX-mailbox
+// theories investigated below are real properties of the library, worth
+// remembering if genuine 3-way contention ever shows up once all three
+// are powered together -- but they were not the cause here. Left at 0
+// (disabled) so this sketch is clean for the real test once the battery
+// is soldered to all three moteus.
+static const uint32_t kInterQueryDelayUs = 0;
+
 static const uint32_t kPeriodUs   = 2500;          // 400 Hz, matches FS_HZ in cubli_gains.h
 static const uint32_t kDurationUs = 600000000UL;   // 10 minutes
 static const uint32_t kStatusEveryUs = 5000000UL;  // live status line every 5 s
@@ -88,7 +99,14 @@ static uint32_t gLatMaxUs = 0;
 static uint64_t gLatSumUs = 0;
 static uint32_t gNoReplyCount = 0;
 
-void recordLatency(uint32_t rtUs, bool ok) {
+// Per-wheel breakdown -- added after a run where noReply was consistently
+// exactly 2x cycles (not ~2x, EXACTLY, for 80+ seconds): too regular to be
+// bus loading, and the pooled counters alone can't say whether it's always
+// the same wheel losing out or whether it rotates. gWheels[0..2] = X,Y,Z.
+static uint32_t gWheelReplies[3] = {0, 0, 0};
+static uint32_t gWheelNoReply[3] = {0, 0, 0};
+
+void recordLatency(int wheelIdx, uint32_t rtUs, bool ok) {
   int bin = (int)(rtUs / kBinWidthUs);
   if (bin >= kNumBins) { bin = kNumBins - 1; }
   gHist[bin]++;
@@ -96,7 +114,12 @@ void recordLatency(uint32_t rtUs, bool ok) {
   gLatSumUs += rtUs;
   if (rtUs < gLatMinUs) { gLatMinUs = rtUs; }
   if (rtUs > gLatMaxUs) { gLatMaxUs = rtUs; }
-  if (!ok) { gNoReplyCount++; }
+  if (ok) {
+    gWheelReplies[wheelIdx]++;
+  } else {
+    gNoReplyCount++;
+    gWheelNoReply[wheelIdx]++;
+  }
 }
 
 // Bucketed percentile: walk bins bottom-up, return the upper edge of the
@@ -144,7 +167,32 @@ static uint32_t gWorstCycleUs  = 0;
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2d: SERIAL COMMANDS
+// SECTION 2d: CAN BUS DIAGNOSTICS
+// ----------------------------------------------------------------------------
+// Same as Stage0_SingleMoteusQuery -- kBusOff/climbing error counters would
+// mean electrical contention with 3 nodes talking; staying ACTIVE with 0
+// errors while noReply is still ~2x cycles would rule that out and point at
+// something in the shared-bus receive path instead (see the NOTES at the
+// bottom of this file).
+
+const char* canStateName(tControllerState s) {
+  switch (s) {
+    case kActive:  return "ACTIVE";
+    case kPassive: return "PASSIVE";
+    case kBusOff:  return "BUS_OFF";
+  }
+  return "?";
+}
+
+void printCanDiagnostics() {
+  Serial.print("# CAN state: "); Serial.print(canStateName(ACAN_T4::can3.controllerState()));
+  Serial.print("  rxErr="); Serial.print(ACAN_T4::can3.receiveErrorCounter());
+  Serial.print("  txErr="); Serial.println(ACAN_T4::can3.transmitErrorCounter());
+}
+
+
+// ----------------------------------------------------------------------------
+// SECTION 2e: SERIAL COMMANDS
 // ----------------------------------------------------------------------------
 
 void handleSerialCommands() {
@@ -215,7 +263,8 @@ void loop() {
     const uint32_t t0 = micros();
     const bool ok = gWheels[i]->SetPosition(cmd, &kTorqueFormat);
     const uint32_t rt = micros() - t0;
-    recordLatency(rt, ok);
+    recordLatency(i, rt, ok);
+    if (kInterQueryDelayUs > 0 && i < 2) { delayMicroseconds(kInterQueryDelayUs); }
   }
 
   const uint32_t cycleDur = micros() - cycleStart;
@@ -237,6 +286,13 @@ void loop() {
     Serial.print(" worstCycle_us="); Serial.print(gWorstCycleUs);
     Serial.print(" latMax_us="); Serial.print(gLatMaxUs);
     Serial.print(" noReply="); Serial.println(gNoReplyCount);
+    Serial.print("#   per-wheel replies/noReply  X="); Serial.print(gWheelReplies[0]);
+    Serial.print("/"); Serial.print(gWheelNoReply[0]);
+    Serial.print("  Y="); Serial.print(gWheelReplies[1]);
+    Serial.print("/"); Serial.print(gWheelNoReply[1]);
+    Serial.print("  Z="); Serial.print(gWheelReplies[2]);
+    Serial.print("/"); Serial.println(gWheelNoReply[2]);
+    printCanDiagnostics();
   }
 
   if (elapsed >= kDurationUs) {
@@ -255,6 +311,13 @@ void loop() {
     Serial.print("# totalCycles="); Serial.println(gTotalCycles);
     Serial.print("# droppedCycles="); Serial.println(gDroppedCycles);
     Serial.print("# worstCycle_us="); Serial.println(gWorstCycleUs);
+    Serial.print("# per-wheel replies/noReply  X="); Serial.print(gWheelReplies[0]);
+    Serial.print("/"); Serial.print(gWheelNoReply[0]);
+    Serial.print("  Y="); Serial.print(gWheelReplies[1]);
+    Serial.print("/"); Serial.print(gWheelNoReply[1]);
+    Serial.print("  Z="); Serial.print(gWheelReplies[2]);
+    Serial.print("/"); Serial.println(gWheelNoReply[2]);
+    printCanDiagnostics();
 
     const bool pass = (percentile(0.999) < 2000) && (gDroppedCycles == 0);
     Serial.print("# ================ RESULT: ");
@@ -272,4 +335,24 @@ void loop() {
 // spent servicing 3x the interrupts, not any single node's link quality --
 // look at bus loading (1 Mbps arbitration + BRS data rate, payload size x
 // 3 nodes x 400 Hz) before suspecting hardware.
+//
+// RESOLVED (was NOT a software bug): two runs, each 100% replies on
+// exactly one wheel and 0% on the other two -- but WHICH wheel won
+// flipped between runs (X first, then Y), which finally gave it away:
+// only one moteus was actually powered at a time (single supply, moved
+// between wheels), not all three. An unpowered node can't reply at the
+// application layer but the one that IS powered still ACKs every frame
+// at the CAN protocol level regardless of destination -- consistent with
+// CAN state staying ACTIVE / 0 errors throughout both runs. Re-run this
+// sketch for real once the battery is soldered to all three.
+//
+// Two theories were investigated and ruled out as THE cause here, but are
+// real properties of the library worth remembering if genuine 3-way
+// contention ever does show up once all three are powered together:
+//   1. Moteus::Poll() pulls one frame off the shared CanBus receive queue
+//      per call and discards it (no requeue, no handoff to another Moteus
+//      instance) if the source doesn't match that object's own options_.id.
+//   2. ACAN_T4's tryToSendDataFrameFD() uses exactly ONE dedicated hardware
+//      TX mailbox for CAN-FD data frames (not one per node), backed by a
+//      16-deep software buffer.
 // ============================================================================
