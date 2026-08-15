@@ -43,7 +43,7 @@ MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 // Confirmed on bench, physically verified (Gam/Skeleton_3Axis.ino's mapping
 // comment): id 2 -> X, id 3 -> Y, id 1 -> Z.
 enum Axis { AXIS_X = 0, AXIS_Y = 1, AXIS_Z = 2 };
-static const Axis kAxis = AXIS_Y;   // <<< CHANGE THIS to test X or Z
+static const Axis kAxis = AXIS_X;   // <<< CHANGE THIS to test X or Z
 
 static const int8_t kAxisMoteusId[3] = { 2, 3, 1 };
 static const char*  kAxisName[3]     = { "X", "Y", "Z" };
