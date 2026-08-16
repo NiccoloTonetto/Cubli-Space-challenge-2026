@@ -11,24 +11,41 @@
 // instead of spinning up steadily the way they did in Stage 3.
 //
 // STAGE 4 CHECKLIST — cube held by hand, gGainScale = 1.0:
-//   Position near the resolved corner's equilibrium (norm3(phi) < 0.5 deg)
-//   BEFORE sending "a1" -- the gate will otherwise refuse to arm and tell
-//   you so.
+//   Position near the resolved corner's equilibrium BEFORE sending "a1" --
+//   if norm3(phi) doesn't settle under ARM_GATE (0.5 deg) even holding the
+//   cube still at its natural rest point, that's the COM offset described
+//   below, not a bad hold -- tare it with "z1" first, then arm.
 //   [ ] All three wheels unwind after each correction (watch the standing-
 //       speed low-pass columns -- rho through a ~5s low-pass).
 //   [ ] Standing speed near zero on all three -> healthy.
 //   [ ] Standing speed nonzero and not settling on ONE wheel -> re-check
 //       that wheel's gyro bias/sign before suspecting the coupled law.
 //
-// UNLIKE edge-bringup's Stage 4, the velocity cap is NOT removed here by
-// default -- corner commands three wheels at once, so a runaway has three
-// times the actuators to draw on and this is the first time all three
-// have ever carried a real closed loop together. If the taper is choking
-// spin-up torque (tau consistently pinned near zero while phi stays
-// large and rho sits below OMEGA_CAP), edge-bringup's Stage 4 has the
-// precedent (kMaxOmega set effectively infinite, TAU_MAX left untouched,
-// "a0" as the actual safety net) -- but that's a call to make explicitly
-// for this stage, not one carried over silently from a single-wheel result.
+// TWO ADDITIONS since the first pass at this stage, both requested for this
+// specific build (still on the bench power supply, not the flight battery
+// -- same root cause edge-bringup hit on the Y edge, generalized to 3D):
+//   - "z1" tares gPhiOffset to the CURRENTLY measured phi (z0 clears it back
+//     to zero). Without the battery/DC-DC mounted, this build's real corner
+//     equilibrium sits measurably off cubli_gains.h's design gB -- more than
+//     ARM_GATE's 0.5 deg -- so the gate was refusing to ever arm against an
+//     equilibrium that doesn't physically exist yet with this mass
+//     distribution. This is a real physical offset, not a sensor
+//     calibration, same distinction edge-bringup's kPhiOffset drew -- but
+//     phi here is a 3-vector, so instead of typing three degree values by
+//     hand (error-prone, slow to iterate), "z1" captures whatever phi reads
+//     RIGHT NOW as the new zero. Rest the cube at its natural, unforced
+//     balance point, tare, then arm. Re-tare (or "z0") once the missing
+//     mass is mounted and the real equilibrium moves back toward design.
+//   - Velocity cap REMOVED (kMaxOmega effectively infinite), same as edge-
+//     bringup's Stage 4 and for the same reason: fighting a genuine COM
+//     offset needs sustained corrective torque the taper was cutting off
+//     before the wheels built up enough momentum to actually win. TAU_MAX
+//     (the real physical torque saturation) is untouched -- this only
+//     affects the momentum-taper policy. Cube is hand-held and arming is an
+//     explicit choice to disarm ("a0") if it runs away -- that IS the
+//     safety mechanism now, not this constant. Do NOT carry this into
+//     Stage 5: that stage keeps the real 40 rad/s OMEGA_CAP because it runs
+//     unsupported.
 //
 // Trips here are still LOOSE (hand-held, watching combined-term behavior)
 // -- Stage 5 tightens to the real DISARM/OMEGA_CAP policy from cubli_gains.h.
@@ -290,10 +307,19 @@ void resolveCornerCandidate() {
 
 float phi[3] = { 0.0f, 0.0f, 0.0f };
 
+// Live-settable via "z1" (tare) / "z0" (clear) -- see the header note above
+// for the full reasoning. Subtracted from the raw measurement below, so
+// EVERYWHERE phi is used from here down (control, arm gate, trips,
+// telemetry) already sees the corrected value, same convention edge-
+// bringup's kPhiOffset used.
+static float gPhiOffset[3] = { 0.0f, 0.0f, 0.0f };
+
 void updateCornerProjection() {
   float t[3];
   cross3(kCorners[gCornerIdx].gB, ghat, t);
-  phi[0] = -t[0]; phi[1] = -t[1]; phi[2] = -t[2];
+  phi[0] = -t[0] - gPhiOffset[0];
+  phi[1] = -t[1] - gPhiOffset[1];
+  phi[2] = -t[2] - gPhiOffset[2];
 }
 
 
@@ -338,12 +364,15 @@ static float gGainScale = 1.0f;   // already validated through Stage 3's ramp
 // Loose this stage -- hand-held, watching combined-term behavior. Stage 5
 // tightens to the real DISARM/OMEGA_CAP policy from cubli_gains.h.
 static const float kMaxTilt    = 0.4363f;   // rad, 25 deg, vs norm3(phi)
-static const float kMaxOmega   = 40.0f;     // rad/s, OMEGA_CAP -- kept live
-                                              // here (see header note above
-                                              // re: edge-bringup's Stage 4
-                                              // precedent for loosening it).
+// Velocity cap REMOVED (see header note above) -- effectively uncapped,
+// same "omega_cap = inf" mode edge-bringup's Stage 4 used. TAU_MAX below
+// is untouched and is still the real physical torque saturation.
+static const float kMaxOmega   = 1.0e6f;    // rad/s -- effectively uncapped
 static const float kTauMax     = 0.12f;     // N*m, TAU_MAX
-static const float kTaperStart = 36.0f;     // rad/s, 90% of cap
+static const float kTaperStart = 36.0f;     // rad/s -- irrelevant now: with
+                                              // kMaxOmega this large, the
+                                              // taper's fade factor stays
+                                              // ~1.0 for any real wheel speed
 
 // Friction feedforward -- Firmware Lessons: "not optional". PLACEHOLDER
 // values from cubli_gains.h pending the real spin-down/breakaway test.
@@ -361,7 +390,10 @@ static const float kEpsFf  = 0.05f;    // rad/s, tanh width
 // moment of arming, not continuously (a trip mid-run is the DISARM trips'
 // job, not this one). Compared against norm3(phi), the 3-vector analogue
 // of edge-bringup's |phi_edge|.
-static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg
+static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg -- kept at the
+                                                  // real value; "z1" (tare)
+                                                  // is the fix for a COM
+                                                  // offset, not a wider gate.
 
 static const float kAxisWheelSign[3] = {
   1.0f,   // X -- CONFIRMED
@@ -484,6 +516,24 @@ void handleSerialCommands() {
     Serial.print("# gGainScale = "); Serial.println(gGainScale, 3);
   } else if (cmd == 'c') {
     resolveCornerCandidate();
+  } else if (cmd == 'z') {
+    if (val != 0.0f) {
+      gPhiOffset[0] += phi[0];
+      gPhiOffset[1] += phi[1];
+      gPhiOffset[2] += phi[2];
+      Serial.print("# gPhiOffset TARED to: ");
+      Serial.print(gPhiOffset[0] * (float)RAD_TO_DEG, 3); Serial.print(",");
+      Serial.print(gPhiOffset[1] * (float)RAD_TO_DEG, 3); Serial.print(",");
+      Serial.print(gPhiOffset[2] * (float)RAD_TO_DEG, 3); Serial.println(" deg");
+      if (norm3(gPhiOffset) > 0.1745329f) {   // ~10 deg
+        Serial.println("# NOTE: that's a large offset (>10 deg) -- expected for");
+        Serial.println("#   a missing-mass COM shift, but confirm this is really");
+        Serial.println("#   the cube resting naturally and not just held crooked.");
+      }
+    } else {
+      gPhiOffset[0] = gPhiOffset[1] = gPhiOffset[2] = 0.0f;
+      Serial.println("# gPhiOffset cleared to 0,0,0");
+    }
   } else if (cmd == 'h') {
     gHalted = (val != 0.0f);
     if (gHalted && gArmed) {
@@ -494,7 +544,8 @@ void handleSerialCommands() {
     Serial.println(gHalted ? "TRUE (idle -- no IMU reads, no CAN traffic)"
                             : "FALSE (resumed, still DISARMED -- send a1)");
   } else {
-    Serial.println("# unknown. use: a<0/1>  g<0..1>  c (re-resolve)  h<0/1>");
+    Serial.println("# unknown. use: a<0/1>  g<0..1>  c (re-resolve)  "
+                    "z<0/1> (clear/tare phi offset)  h<0/1>");
   }
 }
 
@@ -556,7 +607,11 @@ void setup() {
                   "tau_x\ttau_y\ttau_z\ttau_cmd_x\ttau_cmd_y\ttau_cmd_z\t"
                   "armed\tgain_scale");
   Serial.println("# STARTS DISARMED. a1 refused unless norm3(phi) < ARM_GATE");
-  Serial.println("# (0.5 deg) -- get close to the resolved corner first.");
+  Serial.println("# (0.5 deg) -- get close to the resolved corner first. If it");
+  Serial.println("# won't settle under 0.5 deg even resting naturally (COM offset");
+  Serial.println("# without the battery/DC-DC mounted), send z1 to tare, z0 to clear.");
+  Serial.println("# Velocity cap is REMOVED this stage (kMaxOmega effectively inf)");
+  Serial.println("# -- a0 (disarm) is the real safety net now, not a speed limit.");
   Serial.println("# h1 halts (idle + disarm), h0 resumes (still disarmed).");
 
   gNextSendMillis = millis();
