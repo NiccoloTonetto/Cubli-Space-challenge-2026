@@ -364,10 +364,12 @@ static float gGainScale = 1.0f;   // already validated through Stage 3's ramp
 // Loose this stage -- hand-held, watching combined-term behavior. Stage 5
 // tightens to the real DISARM/OMEGA_CAP policy from cubli_gains.h.
 static const float kMaxTilt    = 0.4363f;   // rad, 25 deg, vs norm3(phi)
-// Velocity cap REMOVED (see header note above) -- effectively uncapped,
-// same "omega_cap = inf" mode edge-bringup's Stage 4 used. TAU_MAX below
-// is untouched and is still the real physical torque saturation.
-static const float kMaxOmega   = 1.0e6f;    // rad/s -- effectively uncapped
+// Velocity cap loosened from the 40 rad/s policy value (see header note
+// above), but not literally removed -- set to 2000 RPM, the motor's real
+// mechanical speed rating, so there's still a genuine hardware ceiling
+// behind it rather than "effectively infinite." TAU_MAX below is
+// untouched and is still the real physical torque saturation.
+static const float kMaxOmega   = 209.43951f;    // rad/s (2000 RPM, motor rating)
 static const float kTauMax     = 0.12f;     // N*m, TAU_MAX
 static const float kTaperStart = 36.0f;     // rad/s -- irrelevant now: with
                                               // kMaxOmega this large, the

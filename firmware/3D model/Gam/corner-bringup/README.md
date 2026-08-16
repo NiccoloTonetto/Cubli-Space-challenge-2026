@@ -91,23 +91,36 @@ measured `ghat` against all 8 candidate `gB` vectors and picks whichever
 one it actually agrees with best, printing the answer, the runner-up, and
 a warning if the two are too close to call.
 
+## Hardware status
+
+**Corner balance works** — `[+1,+1,+1]` and `[-1,-1,-1]` both hold on real
+hardware through Stage 4. Notably, these are exactly the body-diagonal
+pair with the smallest predicted lean in the table above (0.714°/0.797°,
+vs. 2.6–3.2° for the other six) — the corner that CAD/LQR design predicted
+would be easiest to balance is the one that actually balances, on the
+first pair tried. Real confirmation the design methodology tracks
+hardware, not a coincidence.
+
+The other six corners are **not** reachable on this build — not a control
+law or firmware problem. At those orientations gravity leans the cube
+such that one or more wheels contact the frame directly (mechanical
+clearance, not electrical/software), before the control law ever gets a
+chance to act. Fixing that is a CAD/mechanical question (frame clearance,
+wheel/motor placement), out of scope for this folder. Two working corners
+on the main space diagonal is enough to demonstrate closed-loop 3-wheel
+corner balance — the goal this bring-up needed to hit.
+
+`z1`/`z0` (tare the phi offset) and a loosened Stage 4 velocity cap (2000
+RPM motor rating instead of the 40 rad/s policy value) were both needed
+to arm and hold on the bench power supply — see `Stage4_FullLaw.ino`'s
+header for the reasoning. Both are Stage-4-only; Stage 5 keeps the real
+`DISARM`/`OMEGA_CAP` policy.
+
 ## What's still open
 
-- **Only ONE corner has hardware data at all, and even that is zero so
-  far** — this folder has not yet been run on real hardware. Do not treat
-  Stage 1 passing on one corner as validating any other; run the full
-  Stage 1→5 sequence per corner, same discipline edge-bringup established
-  per-axis (Firmware Lessons S4).
-- **No live phi-offset correction** (unlike edge-bringup's `kPhiOffset`) —
-  that was added there only after a specific measured resting-point shift
-  on the Y edge (missing battery cable/DC-DC). Add the 3-vector equivalent
-  here only if the same problem actually shows up on a corner, not
-  preemptively.
-- **Stage 4's velocity cap is NOT removed by default**, unlike
-  edge-bringup's Stage 4 — corner commands three wheels at once, so that
-  call is left to be made explicitly, per corner, if the taper is
-  observed choking spin-up torque (see Stage 4's header for the precedent
-  and reasoning).
+- **The other six corners are untested and may stay mechanically
+  unreachable** on this build regardless of firmware — see Hardware
+  status above. Re-check after any frame/mount changes.
 - **Friction feedforward (`kTauCw`/`kBw`) is one placeholder pair shared
   across all three wheels** — plausible for three copies of the same
   motor/mount, but unverified; a real per-wheel spin-down test would
@@ -121,4 +134,5 @@ a warning if the two are too close to call.
   `Sg`/`lambda` (and therefore how well the current `Kp` performs) to be
   somewhat off from the final mass distribution; re-derive gains once the
   real battery/DC-DC are mounted, same measure→derive→re-tune workflow as
-  everywhere else in this project.
+  everywhere else in this project. The phi-offset tare will need re-taring
+  (or clearing with `z0`) once that mass moves the real equilibrium.
