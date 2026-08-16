@@ -19,6 +19,7 @@ contract, and clean timing on this specific cube's wiring.
 | `Stage0_SingleMoteusQuery/` | One wheel, query/reply/stop/zero-torque | 60 s, zero errors — **run 3x, once per wheel ID**, before Stage0b |
 | `Stage0b_ThreeMoteusLatency/` | All 3 wheels, one 400 Hz loop, CAN contention | p99.9 round-trip < 2.0 ms, zero dropped cycles, 10 min |
 | `Stage0c_IMUJitter/` | BMI270 at 800 Hz ODR, polled at 400 Hz | zero stale (repeated) samples over 60 s |
+| `Stage0d_Simultaneous/` | All 3 wheels commanded to the same constant velocity together (cube resting free, not hand-held) | zero comms errors, each wheel's velocity converges to target, 25 s |
 
 CAN and IMU are tested separately here on purpose — combining them is what
 `Gam/Skeleton_3Axis.ino` already does, and isolating which subsystem is
