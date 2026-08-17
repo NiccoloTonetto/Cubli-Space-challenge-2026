@@ -19,11 +19,13 @@ a link watchdog are added.
 
 | | |
 |---|---|
-| [`CornerBalance_WiFi/`](CornerBalance_WiFi/CornerBalance_WiFi.ino) | 3 wheels, 21-field CSV @ 250 Hz |
+| [`CornerBalance_WiFi/`](CornerBalance_WiFi/CornerBalance_WiFi.ino) | 3 wheels, 21-field CSV @ 250 Hz — Stage 4 full law |
 | [`EdgeBalance_WiFi/`](EdgeBalance_WiFi/EdgeBalance_WiFi.ino) | 1 axis, 10-field CSV @ 500 Hz |
+| [`corner-bringup/`](corner-bringup/README.md) | WiFi variants of corner Stages **1, 2, 3, 5** — Serial Monitor over UDP, no plotting |
 | [`xiao_teensy_bridge/`](xiao_teensy_bridge/xiao_teensy_bridge.ino) | ESP32C6 relay — copy of `firmware/XIAO/xiao_teensy_bridge/`, unchanged |
-| [`telemetry_python_wifi.py`](telemetry_python_wifi.py) | live console — **EDGE only** (10 col) |
-| [`telemetry_python_wifi_corner.py`](telemetry_python_wifi_corner.py) | live console — **CORNER only** (21 col) |
+| [`terminal_wifi.py`](terminal_wifi.py) | Serial-Monitor-over-WiFi terminal — every corner stage, no plot |
+| [`telemetry_python_wifi.py`](telemetry_python_wifi.py) | live plotter — **EDGE only** (10 col) |
+| [`telemetry_python_wifi_corner.py`](telemetry_python_wifi_corner.py) | live plotter — **CORNER Stage 4 only** (21 col) |
 | [`link_check.py`](link_check.py) | one-command verdict on an already-flashed link |
 | [`link-bringup/`](link-bringup/README.md) | **staged bring-up of the link itself** — six stages, each one hop longer, nothing that can move a wheel until stage 6 |
 
@@ -76,6 +78,8 @@ bound to `x` would silently do nothing over WiFi while still working over
 USB — the worst possible failure mode for a safety command.
 
 Hence `p`. Keep this straight when swapping between USB and WiFi builds.
+
+The **corner bring-up** WiFi stages (`corner-bringup/Stage1..3,5`) keep the USB letters byte-identical, so halt stays `h1`/`h0` and Stage 1's `p` / `t<Nm>` still fire the pulse. Their keepalive is `k`, link mode is `l<0/1>`, decimation is `d<N>`. `terminal_wifi.py` sends `k` every 100 ms, which `CornerBalance_WiFi` already accepts as a keepalive alias — one terminal drives all five stages. Full grammar: [`corner-bringup/README.md`](corner-bringup/README.md).
 
 ## Telemetry rate — why corner is 250 Hz
 

@@ -11,12 +11,14 @@ FINAL/
 │   ├── CornerBalance/           3 wheels, USB only
 │   └── EdgeBalance/             1 axis (X/Y/Z selectable), USB only
 └── WIFIMODE/
-    ├── CornerBalance_WiFi/      3 wheels, Serial1 → XIAO → UDP
+    ├── CornerBalance_WiFi/      3 wheels, Serial1 → XIAO → UDP  (Stage 4)
     ├── EdgeBalance_WiFi/        1 axis, Serial1 → XIAO → UDP
+    ├── corner-bringup/          WiFi Stages 1, 2, 3, 5 — terminal, no plot
     ├── xiao_teensy_bridge/      the ESP32C6 relay (shared by both)
+    ├── terminal_wifi.py         Serial Monitor over UDP — every corner stage
     ├── link_check.py            staged link diagnostic — run this first
-    ├── telemetry_python_wifi.py         live console — EDGE (10 col)
-    └── telemetry_python_wifi_corner.py  live console — CORNER (21 col)
+    ├── telemetry_python_wifi.py         live plotter — EDGE (10 col)
+    └── telemetry_python_wifi_corner.py  live plotter — CORNER Stage 4 (21 col)
 ```
 
 If the link is silent, run `WIFIMODE/link_check.py` before anything else —
@@ -159,10 +161,22 @@ Traces are grouped onto subplots by unit, armed regions are shaded, and
 `|phi|` is plotted against the 0.5° arm gate. Groups: `tilt`, `rates`,
 `wheels`, `torque`, `all`.
 
+## Corner bring-up over WiFi
+
+Stages 1, 2, 3 and 5 of the corner ladder also have WiFi builds, under
+[`WIFIMODE/corner-bringup/`](WIFIMODE/corner-bringup/README.md). Those are
+read with [`WIFIMODE/terminal_wifi.py`](WIFIMODE/terminal_wifi.py) — a
+Serial-Monitor clone, no plotting. Stage 4 is still
+`WIFIMODE/CornerBalance_WiFi/` and can be read either way: the existing
+plotter (`TELEMETRY_MODE PLOTMODE`, the default) or `terminal_wifi.py`
+(`SERIALMONITORMODE`).
+
+Halt on those bring-up stages stays `h1`/`h0` (USB grammar kept). Keepalive
+moved to `k`. That is the opposite of `CornerBalance_WiFi`, where `h` is the
+keepalive and halt is `p`. `terminal_wifi.py` sends `k`, which both grammars
+accept.
+
 ## Next
 
-`../corner-bringup/Stage5_Release/` and `../edge-bringup/Stage5_Release/` are
-the unsupported release attempts — same law, real `DISARM`/`OMEGA_CAP` trip
-policy restored, latched trip reason. This folder deliberately stops at
-hand-held Stage 4. WiFi variants of Stage 5 are not written; when they are,
-they should reuse this folder's link/watchdog/command layer verbatim.
+`../edge-bringup/Stage5_Release/` is still USB-only. The corner Stage 5 WiFi
+build is `WIFIMODE/corner-bringup/Stage5_Release_WiFi/`.
