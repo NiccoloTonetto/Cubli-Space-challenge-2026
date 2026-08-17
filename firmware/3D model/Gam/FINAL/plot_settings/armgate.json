@@ -1,0 +1,16 @@
+{
+  "grid": true,
+  "legend": true,
+  "overlay": false,
+  "shade": true,
+  "t_range": [
+    0.0,
+    251.146
+  ],
+  "traces": [
+    "phi_x",
+    "phi_y",
+    "phi_z",
+    "|phi|"
+  ]
+}

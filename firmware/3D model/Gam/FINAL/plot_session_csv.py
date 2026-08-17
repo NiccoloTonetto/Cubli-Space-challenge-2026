@@ -21,9 +21,16 @@ USAGE
 
       python plot_session_csv.py run.csv
 
-  Opens the plot with every trace available as a checkbox down the left
-  side. Tick and untick to build the view you want; the axes rescale as
-  you go. Nothing to re-run.
+  Opens the plot with a menu column down the left and a time slider along
+  the bottom. Nothing to re-run: build the view by hand, then save it.
+
+      traces   every series in the file, as checkboxes
+      view     armed shading / grid / legend on and off
+      t (s)    drag either end to crop the time window. The y axes rescale
+               to whatever is inside the window, so narrowing to a quiet
+               2 s stretch actually zooms in on it instead of leaving the
+               axis stretched to a spike that is now off-screen
+      presets  type a name, press save or load
 
   Direct -- you know what you want:
 
@@ -41,8 +48,11 @@ FLAGS
 
   --cols A,B,C   Columns and/or group names to plot. Groups expand to
                  their members. Omit for the interactive checkbox picker.
-  --t LO:HI      Crop to a time range in seconds from the start of the
-                 recording. Either side may be omitted: "5:", ":12".
+  --t LO:HI      Time range in seconds from the start of the recording.
+                 Either side may be omitted: "5:", ":12". Crops the data
+                 in --cols/--save/--list mode; in interactive mode it sets
+                 the slider's starting window, and the full recording stays
+                 loaded so you can widen it again.
   --save FILE    Write the figure to FILE instead of opening a window.
   --overlay      Force every trace onto one axis. By default traces are
                  grouped by UNIT onto stacked subplots sharing the time
@@ -51,6 +61,34 @@ FLAGS
                  the largest.
   --no-armed     Don't shade the armed regions.
   --list         Print available columns and groups, then exit.
+
+  --preset NAME       Load a saved view before opening.
+  --save-preset NAME  Save the resolved view, then carry on.
+  --list-presets      Print saved presets, then exit (no CSV needed).
+
+----------------------------------------------------------------------
+PRESETS
+
+A preset is one JSON file in ./plot_settings/, holding the trace
+selection, time window, shading, grid and legend. Readable, diffable,
+copyable between machines, and committable next to the code it goes with.
+
+    python plot_session_csv.py run.csv                    # build a view
+                                                          # then press save
+    python plot_session_csv.py other.csv --preset armgate # reuse it
+    python plot_session_csv.py run.csv --cols tilt --save-preset tilt
+    python plot_session_csv.py --list-presets
+
+Presets are deliberately format-agnostic: one saved on a 21-column corner
+run can be opened on a 10-column edge run. Traces the file does not have
+are skipped and named, rather than refusing to load or -- worse -- quietly
+showing you a different view than the one you asked for.
+
+Typed flags beat the preset, the preset beats the built-in default, so
+`--preset armgate --t 2:8` is a preset with a different window.
+
+`overlay` is stored, but changing it needs a re-run: the subplot layout is
+fixed when the figure is built. Loading a preset that disagrees says so.
 
 ----------------------------------------------------------------------
 DERIVED COLUMNS
@@ -77,13 +115,25 @@ Requires: pip install matplotlib
 
 import argparse
 import csv
+import json
 import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.widgets import CheckButtons
+from matplotlib.widgets import Button, CheckButtons, TextBox
+
+try:
+    from matplotlib.widgets import RangeSlider
+except ImportError:                       # matplotlib < 3.4
+    RangeSlider = None
 
 ARM_GATE_DEG = 0.5   # matches kArmGate in both firmware builds
+
+# Saved view preferences live next to this script, one JSON per preset, so a
+# preset is a file you can read, diff, copy to another machine and commit.
+SETTINGS_DIR = Path(__file__).resolve().parent / "plot_settings"
+
+PRESET_KEYS = ("traces", "t_range", "overlay", "shade", "grid", "legend")
 
 # ---------------------------------------------------------------------------
 # Formats. Each column carries its unit, which is what drives subplot grouping.
@@ -150,6 +200,59 @@ UNIT_TITLES = {
     "N*m": "Torque", "rev": "Wheel position", "rev/s": "Wheel velocity",
     "flag": "Armed / gain",
 }
+
+
+# ---------------------------------------------------------------------------
+# Presets -- saved view preferences
+# ---------------------------------------------------------------------------
+
+def preset_path(name):
+    return SETTINGS_DIR / f"{name}.json"
+
+
+def list_presets():
+    if not SETTINGS_DIR.is_dir():
+        return []
+    return sorted(p.stem for p in SETTINGS_DIR.glob("*.json"))
+
+
+def read_preset(name):
+    """Returns the preset dict, or exits with the list of what does exist."""
+    path = preset_path(name)
+    if not path.is_file():
+        have = ", ".join(list_presets()) or "(none saved yet)"
+        sys.exit(f"No preset named {name!r} in {SETTINGS_DIR}.\nAvailable: {have}")
+    try:
+        # utf-8-sig, not utf-8: presets are meant to be hand-edited, and both
+        # Notepad and PowerShell's Out-File write a UTF-8 BOM that plain
+        # json.load() rejects with an opaque "Expecting value: line 1 column 1".
+        with path.open(encoding="utf-8-sig") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        sys.exit(f"Could not read preset {path}: {exc}")
+    return {k: data[k] for k in PRESET_KEYS if k in data}
+
+
+def write_preset(name, settings):
+    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    path = preset_path(name)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return path
+
+
+def filter_traces(wanted, series):
+    """Keep only the traces this file actually has.
+
+    Presets are deliberately format-agnostic: one saved from a 21-column corner
+    run is a perfectly reasonable thing to open on a 10-column edge run, and it
+    should apply the half that fits rather than refuse or crash. Returns
+    (kept, missing) so the caller can say what it dropped instead of silently
+    showing a different view than the one you asked for."""
+    kept    = [n for n in wanted if n in series]
+    missing = [n for n in wanted if n not in series]
+    return kept, missing
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +404,7 @@ def armed_spans(t, series):
 
 
 def make_figure(t, series, cols, overlay, shade, title, all_units):
-    """Builds the axes and returns (fig, {name: Line2D}, axes).
+    """Builds the axes and returns (fig, {name: Line2D}, axes, proxy, patches).
 
     Every series in `all_units`' scope gets a Line2D so the interactive picker
     can toggle any of them without rebuilding the figure; the ones not in
@@ -323,10 +426,17 @@ def make_figure(t, series, cols, overlay, shade, title, all_units):
 
     ax_for_unit = {u: axes[i] for i, u in enumerate(units)}
 
-    spans = armed_spans(t, series) if shade else []
+    # Build the shading patches even when `shade` is off, and just hide them.
+    # The view menu can then turn shading back on without rebuilding the
+    # figure -- axvspan needs the spans, and recomputing them on every toggle
+    # would mean re-deriving armed_spans() against data that never changes.
+    spans = armed_spans(t, series)
+    shade_patches = []
     for ax in axes:
         for lo, hi in spans:
-            ax.axvspan(lo, hi, color="0.85", zorder=0)
+            patch = ax.axvspan(lo, hi, color="0.85", zorder=0)
+            patch.set_visible(shade)
+            shade_patches.append(patch)
         ax.grid(alpha=0.25)
     axes[-1].set_xlabel("t (s)")
 
@@ -365,31 +475,53 @@ def make_figure(t, series, cols, overlay, shade, title, all_units):
     # A zero-width span purely as a legend proxy for the real shading, which
     # is a background Polygon and so never picked up by the line-based legend
     # rebuild in refresh() below.
-    armed_proxy = (axes[0].axvspan(t[0], t[0], color="0.85", label="armed")
-                   if spans else None)
+    armed_proxy = None
+    if spans:
+        armed_proxy = axes[0].axvspan(t[0], t[0], color="0.85", label="armed")
+        armed_proxy.set_visible(shade)
 
-    return fig, lines, axes, armed_proxy
+    return fig, lines, axes, armed_proxy, shade_patches
 
 
-def refresh(axes, armed_proxy=None):
+def set_grid(axes, on):
+    """matplotlib treats grid(False, alpha=...) as 'enable, with these line
+    properties' and warns -- so the off case must pass no styling at all."""
+    for ax in axes:
+        ax.grid(True, alpha=0.25) if on else ax.grid(False)
+
+
+def refresh(axes, armed_proxy=None, xlim=None, show_legend=True):
     """Rescale y and rebuild legends from the VISIBLE traces only.
 
     Both halves matter after a checkbox toggle: an axis left stretched to fit
     a hidden trace flattens everything you can still see, and a legend still
-    listing hidden traces is actively misleading about what is on screen."""
+    listing hidden traces is actively misleading about what is on screen.
+
+    `xlim` narrows the rescale to the samples inside the current time window,
+    which is what makes the time slider useful rather than cosmetic: without
+    it, cropping to a quiet 2 s stretch still leaves the axis scaled to a spike
+    somewhere off-screen, and you have zoomed in on a flat line."""
     for ax in axes:
         vis = [ln for ln in ax.get_lines()
                if ln.get_visible() and not ln.get_label().startswith("_")]
-        ys = [y for ln in vis for y in ln.get_ydata()]
+        ys = []
+        for ln in vis:
+            if xlim is None:
+                ys.extend(ln.get_ydata())
+            else:
+                lo_x, hi_x = xlim
+                ys.extend(y for x, y in zip(ln.get_xdata(), ln.get_ydata())
+                          if lo_x <= x <= hi_x)
         if ys:
             lo, hi = min(ys), max(ys)
             pad = (hi - lo) * 0.08 or (abs(hi) * 0.1 or 1.0)
             ax.set_ylim(lo - pad, hi + pad)
 
         handles = list(vis)
-        if armed_proxy is not None and ax is axes[0]:
+        if (armed_proxy is not None and armed_proxy.get_visible()
+                and ax is axes[0]):
             handles.append(armed_proxy)
-        if handles:
+        if show_legend and handles:
             ax.legend(handles=handles, loc="upper left", fontsize=7, ncol=3)
         elif ax.get_legend():
             ax.get_legend().remove()
@@ -398,21 +530,44 @@ def refresh(axes, armed_proxy=None):
 def main():
     p = argparse.ArgumentParser(
         description="Plot a saved Cubli telemetry CSV (edge or corner).")
-    p.add_argument("csv", help="path to the CSV file")
+    p.add_argument("csv", nargs="?", help="path to the CSV file")
     p.add_argument("--cols", default=None,
                    help="comma-separated columns and/or group names; "
                         "omit for the interactive checkbox picker")
     p.add_argument("--t", default=None, metavar="LO:HI",
-                   help="crop to a time range in seconds, e.g. 5:12, 5:, :12")
+                   help="time range in seconds, e.g. 5:12, 5:, :12. Crops in "
+                        "--cols/--save/--list mode; sets the initial slider "
+                        "window in interactive mode")
     p.add_argument("--save", default=None, metavar="FILE",
                    help="write the figure to FILE instead of opening a window")
-    p.add_argument("--overlay", action="store_true",
+    # default=None, not False: it lets a preset supply the value when the flag
+    # was not typed, while a typed flag still wins.
+    p.add_argument("--overlay", action="store_true", default=None,
                    help="put every trace on one axis instead of grouping by unit")
-    p.add_argument("--no-armed", action="store_true",
+    p.add_argument("--no-armed", action="store_true", default=None,
                    help="don't shade the armed regions")
     p.add_argument("--list", action="store_true",
                    help="print available columns and groups, then exit")
+    p.add_argument("--preset", default=None, metavar="NAME",
+                   help="load a saved view preset before opening")
+    p.add_argument("--save-preset", default=None, metavar="NAME",
+                   help="save the resolved view as a preset, then carry on")
+    p.add_argument("--list-presets", action="store_true",
+                   help="print saved presets, then exit")
     args = p.parse_args()
+
+    if args.list_presets:
+        names = list_presets()
+        print(f"Presets in {SETTINGS_DIR}:")
+        for n in names:
+            print(f"  {n}")
+        if not names:
+            print("  (none saved yet -- tick the view you want, type a name "
+                  "in the box and press 'save')")
+        return
+
+    if not args.csv:
+        p.error("the following arguments are required: csv")
 
     path = Path(args.csv)
     if not path.is_file():
@@ -420,12 +575,29 @@ def main():
 
     rows, spec, groups, derived = load_rows(path)
 
+    preset = read_preset(args.preset) if args.preset else {}
+
+    # Typed flag > preset > built-in default, for each preference.
+    overlay   = args.overlay if args.overlay is not None else preset.get("overlay", False)
+    shade     = (not args.no_armed) if args.no_armed is not None else preset.get("shade", True)
+    grid_on   = preset.get("grid", True)
+    legend_on = preset.get("legend", True)
+
     t_range = None
     if args.t:
         lo_s, _, hi_s = args.t.partition(":")
         t_range = (float(lo_s) if lo_s else None, float(hi_s) if hi_s else None)
+    elif preset.get("t_range"):
+        t_range = tuple(preset["t_range"])
 
-    t, series = build_series(rows, spec, derived, t_range)
+    interactive = args.cols is None
+
+    # Interactive keeps the WHOLE recording loaded and uses the slider as a
+    # view window, so a range can be widened again after narrowing it. The
+    # non-interactive paths crop, which is what --t has always meant for them
+    # and what --save needs in order to write the figure you asked for.
+    crop = None if (interactive and not args.list) else t_range
+    t, series = build_series(rows, spec, derived, crop)
 
     if args.list:
         print("\nColumns:")
@@ -439,14 +611,42 @@ def main():
             print(f"  {g:<10} {', '.join(members)}")
         return
 
-    interactive = args.cols is None
-    cols = (resolve_cols(args.cols.split(","), series, groups) if args.cols
-            else resolve_cols(groups["all"], series, groups))
+    if args.cols:
+        cols = resolve_cols(args.cols.split(","), series, groups)
+    elif preset.get("traces"):
+        cols, missing = filter_traces(preset["traces"], series)
+        if missing:
+            print(f"  preset {args.preset!r}: {len(missing)} trace(s) not in "
+                  f"this file, skipped: {', '.join(missing)}")
+        if not cols:
+            print(f"  preset {args.preset!r} selected nothing this file has -- "
+                  f"falling back to the 'all' group.")
+            cols = resolve_cols(groups["all"], series, groups)
+    else:
+        cols = resolve_cols(groups["all"], series, groups)
 
-    fig, lines, axes, armed_proxy = make_figure(
-        t, series, cols, args.overlay, not args.no_armed, path.name,
-        all_units=interactive)
-    refresh(axes, armed_proxy)
+    fig, lines, axes, armed_proxy, shade_patches = make_figure(
+        t, series, cols, overlay, shade, path.name, all_units=interactive)
+    set_grid(axes, grid_on)
+
+    view = [t[0], t[-1]]
+    if interactive and t_range:
+        lo, hi = t_range
+        view = [t[0] if lo is None else max(lo, t[0]),
+                t[-1] if hi is None else min(hi, t[-1])]
+        if view[1] <= view[0]:
+            view = [t[0], t[-1]]
+        axes[0].set_xlim(*view)          # x is shared, so this sets them all
+
+    refresh(axes, armed_proxy, xlim=view if interactive else None,
+            show_legend=legend_on)
+
+    if args.save_preset:
+        saved = write_preset(args.save_preset, {
+            "traces": cols, "t_range": [round(view[0], 3), round(view[1], 3)],
+            "overlay": overlay, "shade": shade,
+            "grid": grid_on, "legend": legend_on})
+        print(f"Saved preset {args.save_preset!r} -> {saved}")
 
     if args.save:
         fig.tight_layout()
@@ -455,11 +655,23 @@ def main():
         return
 
     if interactive:
-        # Checkbox panel down the left. Reserve space for it rather than
-        # overlaying, so it never sits on top of the traces.
-        fig.subplots_adjust(left=0.20, right=0.98, top=0.95, bottom=0.07)
+        # Menu column down the left, time slider along the bottom. Reserve the
+        # space rather than overlaying, so no control ever sits on the traces.
+        fig.subplots_adjust(left=0.21, right=0.98, top=0.95, bottom=0.14)
         names = sorted(lines)
-        ax_check = fig.add_axes([0.005, 0.07, 0.155, 0.88])
+
+        # Mutable so the widget callbacks below can write to it; plain locals
+        # would need `nonlocal` in five closures.
+        state = {"shade": shade, "grid": grid_on, "legend": legend_on,
+                 "view": list(view)}
+
+        def redraw():
+            refresh(axes, armed_proxy, xlim=state["view"],
+                    show_legend=state["legend"])
+            fig.canvas.draw_idle()
+
+        # --- traces -------------------------------------------------------
+        ax_check = fig.add_axes([0.005, 0.33, 0.17, 0.61])
         ax_check.set_title("traces", fontsize=8)
         check = CheckButtons(ax_check, names,
                              [lines[n].get_visible() for n in names])
@@ -468,14 +680,124 @@ def main():
 
         def toggle(name):
             lines[name].set_visible(not lines[name].get_visible())
-            refresh(axes, armed_proxy)
-            fig.canvas.draw_idle()
+            redraw()
 
         check.on_clicked(toggle)
-        # Keep a reference on the figure: CheckButtons stops responding if it
-        # is garbage-collected when main() returns into plt.show().
-        fig._trace_picker = check
-        print("Tick/untick traces in the panel on the left.")
+
+        # --- view options -------------------------------------------------
+        opt_keys = ("shade", "grid", "legend")
+        opt_labels = ["armed shading", "grid", "legend"]
+        ax_opts = fig.add_axes([0.005, 0.215, 0.17, 0.10])
+        ax_opts.set_title("view", fontsize=8)
+        opts = CheckButtons(ax_opts, opt_labels,
+                            [state[k] for k in opt_keys])
+        for lbl in opts.labels:
+            lbl.set_fontsize(7)
+
+        def toggle_opt(label):
+            key = opt_keys[opt_labels.index(label)]
+            state[key] = not state[key]
+            if key == "shade":
+                for patch in shade_patches:
+                    patch.set_visible(state["shade"])
+                if armed_proxy is not None:
+                    armed_proxy.set_visible(state["shade"])
+            elif key == "grid":
+                set_grid(axes, state["grid"])
+            redraw()
+
+        opts.on_clicked(toggle_opt)
+
+        # --- time window --------------------------------------------------
+        slider = None
+        if RangeSlider is not None and t[-1] > t[0]:
+            ax_time = fig.add_axes([0.32, 0.045, 0.56, 0.022])
+            slider = RangeSlider(ax_time, "t (s) ", t[0], t[-1],
+                                 valinit=tuple(state["view"]))
+            slider.label.set_fontsize(8)
+
+            def on_time(val):
+                state["view"] = [float(val[0]), float(val[1])]
+                axes[0].set_xlim(*state["view"])
+                redraw()
+
+            slider.on_changed(on_time)
+        elif RangeSlider is None:
+            print("  (matplotlib < 3.4: no time slider -- use --t LO:HI)")
+
+        # --- presets ------------------------------------------------------
+        ax_name = fig.add_axes([0.005, 0.152, 0.17, 0.038])
+        name_box = TextBox(ax_name, "", initial=(args.preset or "default"))
+        name_box.text_disp.set_fontsize(8)
+        ax_bsave = fig.add_axes([0.005, 0.100, 0.082, 0.040])
+        ax_bload = fig.add_axes([0.093, 0.100, 0.082, 0.040])
+        b_save, b_load = Button(ax_bsave, "save"), Button(ax_bload, "load")
+        b_save.label.set_fontsize(8)
+        b_load.label.set_fontsize(8)
+
+        def current_settings():
+            return {
+                "traces": [n for n in names if lines[n].get_visible()],
+                "t_range": [round(state["view"][0], 3),
+                            round(state["view"][1], 3)],
+                "overlay": overlay,
+                "shade": state["shade"],
+                "grid": state["grid"],
+                "legend": state["legend"],
+            }
+
+        def do_save(_event):
+            name = (name_box.text or "").strip()
+            if not name:
+                print("  type a preset name in the box first")
+                return
+            print(f"  saved preset {name!r} -> {write_preset(name, current_settings())}")
+
+        def do_load(_event):
+            name = (name_box.text or "").strip()
+            if not preset_path(name).is_file():
+                have = ", ".join(list_presets()) or "(none saved yet)"
+                print(f"  no preset {name!r} in {SETTINGS_DIR}. have: {have}")
+                return
+            data = read_preset(name)
+
+            kept, missing = filter_traces(data.get("traces", []), series)
+            if missing:
+                print(f"  {len(missing)} trace(s) not in this file, skipped: "
+                      f"{', '.join(missing)}")
+            want = set(kept)
+            # set_active() fires toggle(), which keeps the widget's own state
+            # and the Line2D in step -- there is no supported way to set a
+            # CheckButtons value silently across matplotlib versions.
+            for i, n in enumerate(names):
+                if lines[n].get_visible() != (n in want):
+                    check.set_active(i)
+            for i, key in enumerate(opt_keys):
+                if key in data and bool(data[key]) != state[key]:
+                    opts.set_active(i)
+            if data.get("t_range") and slider is not None:
+                lo_v = max(float(data["t_range"][0]), t[0])
+                hi_v = min(float(data["t_range"][1]), t[-1])
+                if hi_v > lo_v:
+                    slider.set_val((lo_v, hi_v))
+            print(f"  loaded preset {name!r}")
+            # Axis layout is fixed when the figure is built, so this one
+            # preference cannot be applied live -- say so rather than load a
+            # preset that silently comes out looking different.
+            if bool(data.get("overlay", False)) != bool(overlay):
+                flag = "--overlay" if data.get("overlay") else "without --overlay"
+                print(f"  note: preset wants overlay="
+                      f"{bool(data.get('overlay'))}; re-run {flag} for that.")
+
+        b_save.on_clicked(do_save)
+        b_load.on_clicked(do_load)
+
+        # Keep references on the figure: these widgets stop responding if they
+        # are garbage-collected when main() returns into plt.show().
+        fig._widgets = (check, opts, slider, name_box, b_save, b_load)
+
+        print("Tick traces on the left; drag the time slider along the bottom.")
+        print(f"Presets: type a name, then save/load. Stored in {SETTINGS_DIR}")
     else:
         fig.tight_layout()
 

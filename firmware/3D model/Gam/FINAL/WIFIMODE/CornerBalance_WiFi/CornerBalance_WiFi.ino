@@ -95,7 +95,7 @@
 //
 // CHECKLIST — cube held by hand, gGainScale = 1.0 (unchanged):
 //   Position near the resolved corner's equilibrium BEFORE sending "a1" --
-//   if norm3(phi) doesn't settle under ARM_GATE (0.5 deg) even holding the
+//   if norm3(phi) doesn't settle under ARM_GATE (1.0 deg) even holding the
 //   cube still at its natural rest point, that's the COM offset the USB
 //   build's header describes, not a bad hold -- tare it with "z1" first,
 //   then arm.
@@ -581,10 +581,26 @@ static const float kEpsFf  = 0.05f;    // rad/s, tanh width
 // Arm gate (cubli_gains.h's contract): refuse "a1" unless already near the
 // resolved corner's equilibrium. Checked at the moment of arming, not
 // continuously. Compared against norm3(phi).
-static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg -- kept at the
-                                                  // real value; "z1" (tare)
-                                                  // is the fix for a COM
-                                                  // offset, not a wider gate.
+static const float kArmGate = 0.01745329252f;   // rad, 1.0 deg -- widened from
+                                                  // 0.5 deg for hand-held
+                                                  // bring-up. DO NOT widen
+                                                  // further: with TAU_MAX =
+                                                  // 0.12 N*m and diagonal phi
+                                                  // gains of ~8 N*m/rad, the
+                                                  // phi term alone saturates
+                                                  // the wheels at 0.015 rad
+                                                  // (0.86 deg), so arming much
+                                                  // past 1 deg starts the law
+                                                  // already clipped -- no
+                                                  // proportional authority
+                                                  // left, and outside the
+                                                  // linear regime the LQR
+                                                  // gains were solved for.
+                                                  // "z1" (tare) is still the
+                                                  // fix for a COM offset; the
+                                                  // gate is not the knob for
+                                                  // a cube that rests degrees
+                                                  // off equilibrium.
 
 static const float kAxisWheelSign[3] = {
   1.0f,   // X -- CONFIRMED
@@ -855,8 +871,8 @@ void setup() {
                  "armed\tgain_scale");
 #endif
   gBoot.println("# STARTS DISARMED. a1 refused unless norm3(phi) < ARM_GATE");
-  gBoot.println("# (0.5 deg) -- get close to the resolved corner first. If it");
-  gBoot.println("# won't settle under 0.5 deg even resting naturally (COM offset");
+  gBoot.println("# (1.0 deg) -- get close to the resolved corner first. If it");
+  gBoot.println("# won't settle under 1.0 deg even resting naturally (COM offset");
   gBoot.println("# without the battery/DC-DC mounted), send z1 to tare, z0 to clear.");
   gBoot.println("# Velocity cap loosened to 2000 RPM this stage -- a0 (disarm) is");
   gBoot.println("# the real safety net now, not a speed limit.");

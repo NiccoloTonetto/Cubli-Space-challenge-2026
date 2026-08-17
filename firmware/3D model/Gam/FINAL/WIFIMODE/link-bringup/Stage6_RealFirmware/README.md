@@ -72,7 +72,38 @@ The fault is in the firmware or the sensors, and the symptom tells you which:
 | 10 fields, not 21 | Edge firmware flashed, corner script running. Match them. |
 | `BMI270` not found | SPI wiring / CS on pin 10. Nothing to do with WiFi. |
 | DCM det ≠ 1 | The mount matrix, not the link. |
+| Rate ~105/s, `t_ms` steps of 8–12 ms | **Expected at this stage**, and not loss — see below. |
 | Rate far below 250/s | Re-run [Stage 4](../Stage4_BridgeThroughput/) with the faker. If the faker is clean and the real build is not, the control loop is overrunning its 2 ms budget — a firmware problem, and now you can prove it. |
+
+### ~105 lines/s with the motor bus dead is not a fault
+
+Measured 2026-08-17: a Stage 6 session recorded 26399 samples over 251 s
+(105/s), while the Stage 4 faker over the *same* link and the *same* plotter
+recorded 249.7/s. So the link is not the cause.
+
+Read the `t_ms` deltas, not the average rate — that is what separates the two
+explanations, and they are not distinguishable from the rate alone:
+
+| `t_ms` delta histogram | Meaning |
+|---|---|
+| dominant **4 ms**, occasional 8/12/16 | the firmware emits at 250 Hz and the **link** dropped the missing ones |
+| **no 4 ms at all**, clustered at 8 and 12 | the firmware is *emitting* slowly — the control cycle itself is long |
+
+The observed session was the second: 8 ms x11880, 12 ms x8866, and **not one
+4 ms interval**. That is a 4–6 ms control cycle instead of 2 ms.
+
+The likely cause is this stage's own precondition. `controlStep()` issues three
+`SetPosition()` calls per cycle, one per wheel, and with the **motor bus dead
+nothing answers them** — each transaction costs its CAN timeout instead of a
+prompt reply. Three of those per cycle inflates 2 ms to 4–6 ms, which is
+exactly the bimodal 8/12 ms telemetry spacing seen.
+
+**Decisive test:** re-measure with the motor bus live (during the arming
+sequence in [`../../README.md`](../../README.md) § *Bring-up sequence*). If the
+rate returns to ~250/s and `t_ms` steps at 4 ms, the loop was waiting on a dead
+bus and there is nothing to fix. If it stays at ~105/s with the moteus
+answering, *then* the control loop is genuinely over budget — and the gains
+assume 500 Hz, so that must be fixed before balancing.
 
 ## Then — arming
 
