@@ -3,6 +3,10 @@
 *.autosave
 *.original
 
+# Python bytecode cache -- platform/version-specific, no value in git.
+__pycache__/
+*.pyc
+
 # Arduino IDE auto-installs libraries into whatever it thinks the
 # sketchbook ("directories.user" in arduino-cli.yaml) is. If that setting
 # ever points at this repo again, this stops the resulting vendor copies
