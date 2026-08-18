@@ -1,8 +1,9 @@
 """fft_tilt_analysis.py  --  FFT the tilt from a balance-test recording
 
-Step 1 + 3 of "Automatic Trim -- Replacing the Hardcoded IMU Offset" S8/S9:
-log the standing wheel speeds, FFT the tilt, identify the mode, BEFORE
-touching gains or implementing the trim. This script is that FFT step.
+Test 1 of Cube Fine-Tuning -- Test Plan.md (refines "Automatic Trim --
+Replacing the Hardcoded IMU Offset" S8/S9): log the standing wheel speeds,
+FFT the tilt, identify the mode, BEFORE touching gains or implementing the
+trim. This script is that FFT step.
 
 Takes either a telemetry CSV (from CornerBalance/CornerBalance_WiFi or
 EdgeBalance/EdgeBalance_WiFi -- same loader plot_session_csv.py uses, so
@@ -14,17 +15,23 @@ and reports/plots its frequency spectrum.
 WHY THIS SHAPE
 
 The design's closed-loop poles are all near-critically-damped (see the
-Trim note S6) -- if a real recording shows a sharp spectral peak, that
-mode is UNMODELLED, and where the peak sits tells you what to go look at:
+Test Plan's Test 1 table) -- if a real recording shows a sharp spectral
+peak, that mode is UNMODELLED, and where the peak sits tells you what to
+go look at (also BANDS below, which is what the code actually uses):
 
-    ~0.56 Hz        wheel-unwinding mode (K3 territory, not a fault)
-    ~1.3 - 1.6 Hz   a true tilt mode, OR cable resonance -- freehanging
-                    cable at 100-200 mm reproduces exactly this band
-                    (Trim note table: 100mm->1.58Hz, 150mm->1.29Hz,
-                    200mm->1.11Hz). If cables are already strain-relieved
-                    to the frame, a peak that persists here is more
-                    likely a real tilt mode than the cable.
-    > 3 Hz          estimator or loop rate artefact, not the plant
+    ~0.56 Hz        wheel-unwinding mode -- Test Plan S8, lower omega_des
+    1.1 - 1.6 Hz    tilt mode OR cable resonance -- freehanging cable at
+                    100-200 mm reproduces exactly this band (100mm-
+                    >1.58Hz, 150mm->1.29Hz, 200mm->1.11Hz). Test 3
+                    (strain-relieve, re-run) first; if cables are already
+                    relieved, a peak that persists here is more likely a
+                    real tilt mode than the cable.
+    2 - 3 Hz        estimator phase lag -- Test 2 (rate_cutoff_hz,
+                    complementary filter tau, accelerometer gate, BMI270
+                    ODR vs loop rate -- all four are a code read, not a
+                    bench test, and free)
+    > 5 Hz          loop rate or aliasing, not the plant -- check the
+                    actual achieved loop period, not the nominal one
     ~141 Hz (or a   wheel vibration through the accelerometer -- only
      harmonic)      resolvable if the recording's sample rate clears
                     ~2x that (Nyquist), which the ~250-400 Hz control
@@ -107,20 +114,36 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_session_csv import (   # noqa: E402  (path must be set up first)
-    load_rows, EDGE_COLS, CORNER_COLS, CORNER_DERIVED,
+    load_rows, EDGE_COLS, CORNER_COLS, CORNER_TRIM_COLS, CORNER_ENDURANCE_COLS,
+    CORNER_DERIVED,
 )
 
+# CORNER and CORNER_TRIM (Stage4_AutoTrim.ino's format, 21 CORNER fields +
+# 5 trim fields) share the same first 21 columns, so every derived formula
+# below (which only indexes 1-9) and every --channel option works
+# unmodified on either -- only the width used to tell them apart from EDGE
+# differs.
+CORNER_WIDTHS = (len(CORNER_COLS), len(CORNER_TRIM_COLS), len(CORNER_ENDURANCE_COLS))
+
 # ---------------------------------------------------------------------------
-# Diagnostic frequency bands, from "Automatic Trim" S6.
+# Diagnostic frequency bands -- Cube Fine-Tuning Test Plan.md, Test 1's
+# table (refines "Automatic Trim" S6: splits its single ">3 Hz" band into
+# "estimator phase lag" vs "loop rate/aliasing", which matter differently
+# enough to send you to different tests). "Go to" column folded into each
+# hint so a peak points straight at the next test, not just a label.
 # ---------------------------------------------------------------------------
 
 BANDS = [
     # (lo_hz, hi_hz, label)
-    (0.45, 0.70, "wheel-unwinding mode (K3 territory) -- not a fault"),
-    (1.10, 1.65, "tilt mode OR cable resonance (100-200mm free length "
-                 "spans 1.11-1.58 Hz) -- if cables are strain-relieved, "
-                 "lean toward a real tilt mode"),
-    (3.00, 60.0, "estimator or loop-rate artefact, not the plant"),
+    (0.45, 0.70, "wheel-unwinding mode -- lower omega_des (S8), not a fault"),
+    (1.10, 1.60, "tilt mode OR cable resonance (100-200mm free length "
+                 "spans 1.11-1.58 Hz) -- Test 3 (strain-relieve, re-run) "
+                 "first; if cables are already relieved, lean toward a "
+                 "real tilt mode"),
+    (2.00, 3.00, "estimator phase lag -- Test 2 (rate_cutoff_hz, complementary "
+                 "filter tau, accel gate, BMI270 ODR vs loop rate)"),
+    (5.00, 120.0, "loop rate or aliasing -- check the actual loop period, "
+                  "not the plant"),
     (120.0, 165.0, "wheel vibration through the accelerometer (needs a "
                    "high-rate capture to resolve cleanly)"),
 ]
@@ -165,7 +188,7 @@ def armed_crop(t, armed):
 
 def load_csv_channel(path, channel, t_range, do_armed_crop):
     rows, spec, groups, derived = load_rows(path)
-    is_corner = len(spec) == len(CORNER_COLS)
+    is_corner = len(spec) in CORNER_WIDTHS
 
     if channel == "tilt":
         if is_corner:
@@ -227,7 +250,7 @@ def load_csv_channel(path, channel, t_range, do_armed_crop):
 
 def list_csv(path):
     rows, spec, groups, derived = load_rows(path)
-    is_corner = len(spec) == len(CORNER_COLS)
+    is_corner = len(spec) in CORNER_WIDTHS
     print(f"format: {'CORNER' if is_corner else 'EDGE'}")
     print("channels for --channel:")
     print("  tilt      -- |phi| (corner) or phi_edge_deg (edge)")

@@ -1,118 +1,78 @@
 // ============================================================================
 // TEENSY 4.1 + moteus-n1 x3 (CAN3, ids 1/2/3) + BMI270 IMU (SPI) —
-// CORNER STAGE 4: FULL LAW + AUTOMATIC TRIM
+// CORNER STAGE 5: RELEASE + AUTOMATIC TRIM + FINE-TUNING INSTRUMENTATION
 // ============================================================================
-// Copy of Stage4_FullLaw.ino with ONE mechanism replaced: the manual "z1"
-// snapshot-and-freeze phi offset is gone, replaced by the closed-loop
-// adaptive trim from "Automatic Trim -- Replacing the Hardcoded IMU
-// Offset.md". Everything else (full law, friction FF, arm gate, the
-// loosened velocity cap) is unchanged from that file -- read there first
-// if this is the first Stage 4 variant you're looking at.
+// Copy of Stage5_Release.ino carrying the same three additions
+// Stage4_AutoTrim.ino made to Stage4_FullLaw.ino, PLUS what Cube
+// Fine-Tuning -- Test Plan.md's Session 2/3 (Tests 5, 6, 7) need that
+// Stage 4 didn't: a live-settable wheel-speed cap and endurance-run
+// instrumentation. If this is the first AutoTrim variant you're looking
+// at, read Stage4_AutoTrim.ino's header first -- the trim mechanism itself
+// isn't re-explained in full here.
 //
-// ---------------------------- WHAT AND WHY ---------------------------------
-// The manual tare worked, but it's a SNAPSHOT: whatever offset the cube
-// happened to have at the moment you sent "z1" is what gets subtracted,
-// forever, until you tare again by hand. It can't track drift (thermal
-// effects on the IMU move the true offset during a run), and re-taring
-// after every hardware change (battery mounted, a cable moved, a bolt
-// tightened) is exactly the "gradient descent by eye" this note argues
-// against.
+// PHYSICAL STOP/CATCH IN PLACE. E-STOP IN HAND. This is the stage where the
+// cube is NOT held by hand. The control law is identical to Stage 4 (this
+// one, with trim); nothing new about the law itself, only about the full
+// closed loop running unsupported, on a corner, for real.
 //
-// The fix uses a fact that's easy to miss: THE CUBE ALREADY MEASURES ITS
-// OWN REFERENCE ERROR, continuously, for free. If the reference (gB) is
-// wrong by an angle delta, the controller drives its MEASURED error to
-// zero -- so the cube physically balances at a true tilt of delta. Gravity
-// then exerts a constant torque proportional to delta, which the
-// controller must constantly cancel. A constant torque would ramp a wheel
-// to saturation, except the rho/K3 term (already in this file's full law)
-// trades wheel speed against tilt instead, so the wheel settles at a fixed
-// STANDING SPEED rather than accelerating forever:
+// ---------------------------- WHAT'S NEW HERE ---------------------------
+// vs Stage5_Release.ino:
+//   - Automatic trim (gTrim), replacing nothing -- Stage5_Release never had
+//     a manual offset to replace (edge-bringup's kPhiOffset/corner's old
+//     Stage4 gPhiOffset were never ported to Stage 5). This is trim's
+//     first appearance at the release stage. "z1"/"z0" seed/clear,
+//     "x1"/"x0" freeze/resume, "k<value>" adaptation gain -- same as
+//     Stage4_AutoTrim.
+//   - Test 6 (wheel-speed cap): kMaxOmega/kTaperStart are now LIVE-
+//     SETTABLE ("o<rad/s>"/"p<rad/s>"), not compiled-in constants. The
+//     test's own procedure is iterative -- set omega_cap to ~3x the
+//     post-trim standing speed, verify, tighten toward 40 rad/s in
+//     steps -- and that is painful if every step needs a recompile+
+//     reflash. Real policy value (40) is still the DEFAULT and the
+//     documented target; live-setting it doesn't change what "done"
+//     looks like, it just lets you get there without reflashing between
+//     every step. The taper is already a fade (not a switch) and already
+//     only touches spin-up torque, never braking -- see commandWheels()
+//     below, unchanged from Stage5_Release -- so Test 6's two structural
+//     requirements were already satisfied before this file existed.
+//   - Test 7 (endurance run) instrumentation: a loop-overrun counter
+//     (gLoopOverrunCount, any cycle whose measured dt exceeds 1.5x
+//     nominal), per-wheel controller temperature (moteus's own
+//     Query::Result.temperature -- requested by DEFAULT resolution, no
+//     Format change needed, was already arriving in every reply unused),
+//     and per-wheel saturation duty (gSatDuty, a 5s-low-pass fraction of
+//     time each wheel's commanded torque sits at/near kTauMax). All three
+//     are exactly the four signals Test 7 says to plot against time
+//     (standing wheel speed and trim were already there).
+//   - Telemetry decimated 10x (kTelemetryDecim) -- NOT primarily for the
+//     bandwidth-blocking reason the WiFi builds decimate for (this file
+//     uses Serial/USB, not a baud-rate-limited UART link), but because a
+//     30-minute run at the full 500 Hz loop rate is ~900k telemetry
+//     lines -- unwieldy to log and plot for no benefit, when nothing
+//     Test 7 watches (temperature, standing speed, trim, saturation duty)
+//     changes meaningfully faster than a few Hz anyway. 50 Hz is still
+//     far more resolution than any of those four signals needs.
+//   - BMI270 ODR raised to 800 Hz (was 400, against a 500 Hz loop) --
+//     Test 2 finding, see cube-bringup/Stage0c_IMUJitter.ino, which
+//     validated this exact fix and was never carried forward into any
+//     balance-stage file until now.
 //
-//     standing_wheel_speed_ss = -(K1 * delta) / K3
+// STAGE 5 PROCEDURE (unchanged from Stage5_Release.ino):
+//   1. Cube resting on the corner Stage 1 identified, near the resolved
+//      equilibrium (arm gate needs this, or send "z1" to fast-start trim).
+//   2. Send "a1" to arm -- refused if not close enough.
+//   3. Let go / give it a small push. Watch it recover, or watch it trip.
+//   4. If it trips: check trip_reason in telemetry before re-arming. A
+//      trip is not a bug to route around by disarming and re-arming
+//      quickly -- read the number first, and check WHICH wheel's rho or
+//      which axis of phi drove it before assuming it's the same failure
+//      mode you saw last time.
 //
-// That standing speed is a signed, calibrated readout of delta. No new
-// sensor needed -- just low-pass the wheel speed (this file already does,
-// 5 s tau, for telemetry) and feed it back into the reference:
-//
-//     trim  +=  +k_a * dt * standing_wheel_speed          (PLUS, verified)
-//
-// As trim approaches delta, the residual tilt the controller sees shrinks,
-// the standing speed shrinks, and the correction slows down and stops --
-// a self-consistent fixed point, no external calibration step. tau_a = 60 s
-// (k_a = 2.922e-6, this file's default) keeps the adaptation about 200x
-// slower than anything the control loop itself does, so the two cannot
-// interact or fight each other.
-//
-// THIS IS NOT DISTURBANCE FEEDFORWARD -- that would estimate a torque and
-// cancel it with more torque, which ramps the wheel to saturation forever
-// because the WHEEL keeps supplying the cancelling torque. Trim instead
-// MOVES THE REFERENCE so gravity supplies zero net torque at the new
-// equilibrium -- bounded, and it drives its own error to zero.
-//
-// >>> THE SIGN IS VERIFIED, DO NOT RE-DERIVE. <<< A projected trim was
-// injected on the bench and the wheel response measured: cos(trim, wheels)
-// = -1.0000. The wheels spin OPPOSITE the trim. The opposite adaptation
-// sign is UNSTABLE -- it runs away with time constant K3/(k_a*K1) in the
-// wrong direction. Same class of "checked, not a guess" constant as this
-// file's own kI_FILT gyro-bias integration a few sections down (also a
-// verified PLUS).
-//
-// GUARDS, all of which matter (see updateTrim()/applyTrimGuards() below):
-//   - Adapts ONLY while quiescent (tilt AND rate both small, "x1" enabled,
-//     armed) -- during a recovery the wheel speeds are large and say
-//     nothing about the equilibrium; adapting then would let one
-//     disturbance corrupt the trim.
-//   - Projected perpendicular to gB every update -- the component of trim
-//     ALONG gB is yaw, which is unobservable and uncontrollable (Attitude
-//     representation for the firmware.md S1); left alone it drifts without
-//     bound instead of converging.
-//   - Clamped to +/-2 deg -- an error beyond that is mechanical (shim it,
-//     don't trim it). Hitting the clamp is itself a useful readout.
-//   - Freezes automatically on any trip, because gArmed goes false the
-//     same cycle a trip fires and updateTrim() is gated on gArmed -- "do
-//     not learn from a fall" falls out for free, no extra state needed.
-//   - Logged every cycle in telemetry, both in degrees and converted to an
-//     equivalent COM offset in mm via this corner's ell -- per the note,
-//     the converged value IS a live COM-error readout, not just an
-//     internal correction term.
-//
-// NOT implemented here (deliberately, see the note's own scope): EEPROM
-// persistence across boots ("save once converged"). "x0" freezes the
-// current value for a session; there's no flash write yet, so trim starts
-// at zero (or wherever "z1" seeds it) every power-up. Add EEPROM/LittleFS
-// persistence separately once the trim's behavior on real hardware is
-// trusted enough to want it surviving a reboot.
-//
-// "z1" still exists, repurposed as a FAST-START: it seeds trim so the
-// corrected phi reads ~0 immediately, instead of waiting several tau_a for
-// automatic adaptation to walk there from zero. The automatic trim then
-// takes over from that seed and tracks any further drift on its own --
-// "z1" is a shortcut to the same fixed point, not a competing mechanism.
-// "z0" clears trim to zero. "x0"/"x1" freezes/resumes adaptation without
-// touching the current value or disarming.
-//
-// STAGE 4 CHECKLIST — cube held by hand, gGainScale = 1.0:
-//   Position near the resolved corner's equilibrium BEFORE sending "a1" --
-//   if norm3(phi) doesn't settle under ARM_GATE (0.5 deg) even holding the
-//   cube still at its natural rest point, either send "z1" once to fast-
-//   start (recommended for this bring-up run), or arm anyway once close
-//   enough and let automatic adaptation walk it in over the next ~4 tau_a
-//   (~4 min at the default 60 s).
-//   [ ] trim_x/y/z_deg in telemetry moves smoothly toward a steady value
-//       while armed and quiescent, then stops changing -- that's
-//       convergence. Note the value: per the guard above, it's your
-//       equivalent COM-error readout (also printed as trim_com_mm).
-//   [ ] All three wheels unwind after each correction (watch the standing-
-//       speed low-pass columns -- rho through a ~5s low-pass) once trim has
-//       converged -- persistent nonzero standing speed after convergence
-//       means something is still wrong (a stale trim, a corner that got
-//       re-resolved mid-run, or a genuinely large/mechanical offset pinned
-//       at the 2 deg clamp).
-//
-// Velocity cap loosened (kMaxOmega, not literally removed) same as
-// Stage4_FullLaw.ino -- see that file's header for the full reasoning.
-// Trips here are still LOOSE (hand-held) -- Stage 5 tightens to the real
-// DISARM/OMEGA_CAP policy from cubli_gains.h.
+// Still using the bench power supply, not the flight battery -- Sg/lambda
+// (and therefore how well THIS Kp performs) are still whatever they are
+// for the current, not final, mass distribution. Re-derive gains once the
+// final mass is on, same measure -> derive -> re-tune workflow as
+// everywhere else in this project.
 // ============================================================================
 
 
@@ -144,10 +104,13 @@ const uint32_t kPeriodMs = 2;   // 500 Hz
 static uint32_t gNextSendMillis = 0;
 
 static bool gHalted = false;
+// Deliberately does NOT touch gTripReason -- halting is an operator pause,
+// not a trip, so if a real trip happened before you halted, that record
+// stays visible until you actually re-arm. Same as edge-bringup's Stage 5.
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2b: STATE ESTIMATION -- gam (unchanged from Stage 1-3)
+// SECTION 2b: STATE ESTIMATION -- gam (unchanged from Stage 1-4)
 // ----------------------------------------------------------------------------
 
 static const float kG0 = 9.80665f;
@@ -295,10 +258,9 @@ struct CornerCandidate {
   float gB[3];
   float Kp[3][9];   // rows = wheel X,Y,Z; cols = [phi(3) om(3) rho(3)]
   float placeOffsetDeg;
-  float ellM;       // m, contact-to-COM lever arm -- NEW vs Stage4_FullLaw.ino,
+  float ellM;       // m, contact-to-COM lever arm -- NEW vs Stage5_Release.ino,
                      // used only to convert a converged trim into an
-                     // equivalent COM offset in mm for telemetry (Automatic
-                     // Trim.md S4's "log trim continuously" guard).
+                     // equivalent COM offset in mm for telemetry.
 };
 
 static const CornerCandidate kCorners[8] = {
@@ -375,16 +337,9 @@ void resolveCornerCandidate() {
 
 float phi[3] = { 0.0f, 0.0f, 0.0f };
 
-// AUTOMATIC TRIM state -- see the header note above for the full
-// derivation. ADDED to the raw measurement below (note the sign: this is
-// deliberately the opposite convention from Stage4_FullLaw.ino's
-// gPhiOffset, which was SUBTRACTED -- gTrim follows "Automatic Trim...md"
-// section 4's own phi_err = raw + trim verbatim, because the adaptation
-// law's sign is the one thing in that note explicitly flagged as
-// VERIFIED, DO NOT RE-DERIVE, and re-deriving what the equivalent
-// subtraction-convention sign would be is exactly the kind of "should be
-// obviously equivalent" reasoning that gets signs wrong in this codebase.
-// Follow the source exactly rather than reconciling conventions by hand.
+// AUTOMATIC TRIM state -- see Stage4_AutoTrim.ino's header for the full
+// derivation. ADDED to the raw measurement below (phi_err = raw + trim,
+// the note's own verified convention -- do not subtract).
 static float gTrim[3]     = { 0.0f, 0.0f, 0.0f };   // rad, added to raw phi
 static bool  gTrimEnabled = true;                    // "x0" freezes, "x1" resumes
 
@@ -396,11 +351,7 @@ void updateCornerProjection() {
   phi[2] = -t[2] + gTrim[2];
 }
 
-// Strip the yaw component (unobservable/uncontrollable, Attitude
-// representation for the firmware.md S1) and clamp to TRIM_MAX. Applied
-// after BOTH the automatic adaptation step and a manual "z1" seed, so
-// neither path can leave gTrim carrying a yaw component or an
-// unreasonably large magnitude.
+// Strip yaw, clamp to TRIM_MAX -- see Stage4_AutoTrim.ino, identical.
 static const float kTrimMax = 0.0349065850f;   // rad, 2 deg
 
 void applyTrimGuards() {
@@ -422,9 +373,19 @@ void applyTrimGuards() {
 // SECTION 2d: TELEMETRY
 // ----------------------------------------------------------------------------
 
+// trip_reason: 0 none, 1 tilt (norm3(phi) > DISARM), 2 omega (any
+// |rho[i]| > OMEGA_CAP), 3 nan. Latched until the next "a1" -- read it
+// before re-arming, don't just re-arm and hope.
+//
+// temp[3]/satDuty[3]/overrunCount are Test 7's endurance-run instruments
+// -- see the header note for what each one is and why. temp comes
+// straight from moteus's own reply (Query::Result.temperature, requested
+// at DEFAULT resolution -- no Format change needed, it was always in
+// every reply already, just never read before this file).
 void printState(uint32_t t_ms, const float rho[3], const float rhoLp[3],
                 const float tau[3], const float tauCmd[3], bool armed,
-                float gainScale) {
+                int tripReason, const float temp[3], const float satDuty[3],
+                uint32_t overrunCount) {
   Serial.print(t_ms);
   Serial.print('\t'); Serial.print(phi[0] * (float)RAD_TO_DEG, 3);
   Serial.print('\t'); Serial.print(phi[1] * (float)RAD_TO_DEG, 3);
@@ -445,67 +406,59 @@ void printState(uint32_t t_ms, const float rho[3], const float rhoLp[3],
   Serial.print('\t'); Serial.print(tauCmd[1], 4);
   Serial.print('\t'); Serial.print(tauCmd[2], 4);
   Serial.print('\t'); Serial.print(armed ? 1 : 0);
-  Serial.print('\t'); Serial.print(gainScale, 2);
-  // Automatic trim readout -- per-axis in degrees, plus the equivalent COM
-  // offset in mm (norm3(gTrim) * ell, small-angle) per Automatic Trim.md
-  // S4's "log trim continuously" guard: this is a live COM-error readout,
-  // not just an internal correction term, so it's worth watching converge.
+  Serial.print('\t'); Serial.print(tripReason);
+  // Automatic trim readout -- see Stage4_AutoTrim.ino for why both the
+  // per-axis degrees and the mm conversion are logged.
   Serial.print('\t'); Serial.print(gTrim[0] * (float)RAD_TO_DEG, 4);
   Serial.print('\t'); Serial.print(gTrim[1] * (float)RAD_TO_DEG, 4);
   Serial.print('\t'); Serial.print(gTrim[2] * (float)RAD_TO_DEG, 4);
   Serial.print('\t'); Serial.print(norm3(gTrim) * kCorners[gCornerIdx].ellM * 1000.0f, 3);
-  Serial.print('\t'); Serial.println(gTrimEnabled ? 1 : 0);
+  Serial.print('\t'); Serial.print(gTrimEnabled ? 1 : 0);
+  // Test 7 endurance instrumentation.
+  Serial.print('\t'); Serial.print(temp[0], 1);
+  Serial.print('\t'); Serial.print(temp[1], 1);
+  Serial.print('\t'); Serial.print(temp[2], 1);
+  Serial.print('\t'); Serial.print(satDuty[0], 3);
+  Serial.print('\t'); Serial.print(satDuty[1], 3);
+  Serial.print('\t'); Serial.print(satDuty[2], 3);
+  Serial.print('\t'); Serial.println(overrunCount);
 }
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2e: CONTROL — full law: phi + om + rho, plus friction FF
+// SECTION 2e: CONTROL — full law (identical to Stage 4), real trip policy
 // ----------------------------------------------------------------------------
 
 static bool  gArmed     = false;
-static float gGainScale = 1.0f;   // already validated through Stage 3's ramp
+static float gGainScale = 1.0f;   // already validated through Stage 4
 
-// Loose this stage -- hand-held, watching combined-term behavior. Stage 5
-// tightens to the real DISARM/OMEGA_CAP policy from cubli_gains.h.
-static const float kMaxTilt    = 0.4363f;   // rad, 25 deg, vs norm3(phi)
-// Velocity cap loosened from the 40 rad/s policy value (see header note
-// above), but not literally removed -- set to 2000 RPM, the motor's real
-// mechanical speed rating, so there's still a genuine hardware ceiling
-// behind it rather than "effectively infinite." TAU_MAX below is
-// untouched and is still the real physical torque saturation.
-static const float kMaxOmega   = 209.43951f;    // rad/s (2000 RPM, motor rating)
-static const float kTauMax     = 0.12f;     // N*m, TAU_MAX
-static const float kTaperStart = 36.0f;     // rad/s -- irrelevant now: with
-                                              // kMaxOmega this large, the
-                                              // taper's fade factor stays
-                                              // ~1.0 for any real wheel speed
+// Real cube-wide policy from cubli_gains.h -- NOT Stage 4's loose values.
+static const float kMaxTilt    = 0.261799395f;   // rad, 15 deg -- DISARM, vs norm3(phi)
+static const float kTauMax     = 0.12f;          // N*m -- TAU_MAX
 
-// Friction feedforward -- Firmware Lessons: "not optional". PLACEHOLDER
-// values from cubli_gains.h pending the real spin-down/breakaway test.
-// Same values applied to all three wheels (no reason to expect them to
-// differ between wheels of the same motor/mount design, but this is a
-// PLACEHOLDER assumption too -- flag if one wheel's standing speed clearly
-// misbehaves relative to the other two).
+// Test 6 (wheel-speed cap): live-settable, NOT compiled-in constants --
+// "o<rad/s>" / "p<rad/s>". Real policy DEFAULT is still 40/36 (unchanged
+// from Stage5_Release.ino) -- live-setting is for the tightening
+// procedure itself (set to ~3x post-trim standing speed, verify, step
+// toward these defaults), not a way to ship with a different policy.
+// Reset to default with "o40" "p36" if you lose track of where you left it.
+static float gMaxOmega   = 40.0f;   // rad/s -- OMEGA_CAP, per wheel
+static float gTaperStart = 36.0f;   // rad/s
+
 static const float kTauCw  = 0.008f;   // N*m, PLACEHOLDER
 static const float kBw     = 0.0f;     // N*m*s, PLACEHOLDER
-static const float kEpsFf  = 0.05f;    // rad/s, tanh width
+static const float kEpsFf  = 0.05f;    // rad/s
 
-// Arm gate (cubli_gains.h's contract): refuse "a1" unless already near the
-// resolved corner's equilibrium. Prevents an accidental full-authority
-// command from a badly-off-vertical starting position -- checked at the
-// moment of arming, not continuously (a trip mid-run is the DISARM trips'
-// job, not this one). Compared against norm3(phi), the 3-vector analogue
-// of edge-bringup's |phi_edge|.
-static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg -- kept at the
-                                                  // real value; "z1" (tare)
-                                                  // is the fix for a COM
-                                                  // offset, not a wider gate.
+static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg
 
 static const float kAxisWheelSign[3] = {
   1.0f,   // X -- CONFIRMED
   1.0f,   // Y -- CONFIRMED
   1.0f,   // Z -- CONFIRMED
 };
+
+enum TripReason { TRIP_NONE = 0, TRIP_TILT = 1, TRIP_OMEGA = 2, TRIP_NAN = 3 };
+static int gTripReason = TRIP_NONE;
 
 static Moteus::PositionMode::Format kTorqueFormat = []() {
   Moteus::PositionMode::Format f;
@@ -518,17 +471,23 @@ static Moteus::PositionMode::Format kTorqueFormat = []() {
   return f;
 }();
 
-static float gLastTau[3]      = { 0.0f, 0.0f, 0.0f };
-static float gLastTauCmd[3]   = { 0.0f, 0.0f, 0.0f };
-static float gRhoLp[3]        = { 0.0f, 0.0f, 0.0f };   // standing speed, tau = 5 s
+static float gLastTau[3]    = { 0.0f, 0.0f, 0.0f };
+static float gLastTauCmd[3] = { 0.0f, 0.0f, 0.0f };
+static float gRhoLp[3]      = { 0.0f, 0.0f, 0.0f };
+
+// Test 7 (endurance run) instrumentation -- see header note. gSatDuty is a
+// 5s-low-pass (same tau as gRhoLp, same alphaLp below) fraction of time
+// each wheel's OUTGOING command sits at/near kTauMax -- 0.0 = never
+// saturating, 1.0 = pinned at the limit continuously. gMotorTemp is read
+// straight from each moteus's own reply, no extra query needed.
+static float gSatDuty[3]    = { 0.0f, 0.0f, 0.0f };
+static float gMotorTemp[3]  = { 0.0f, 0.0f, 0.0f };
 
 Moteus& wheelObj(int i) {
   return i == 0 ? moteusX : (i == 1 ? moteusY : moteusZ);
 }
 
 void commandWheels(const float rho[3]) {
-  // x = [phi(3); om(3); rho(3)] -- full state, all nine columns of each
-  // wheel's Kp row now contribute.
   const float xVec[9] = {
     phi[0], phi[1], phi[2],
     w_b[0], w_b[1], w_b[2],
@@ -545,24 +504,34 @@ void commandWheels(const float rho[3]) {
 
     const bool spinning_up = (u >= 0.0f) == (rho[i] >= 0.0f);
     if (spinning_up) {
-      float s = (kMaxOmega - fabsf(rho[i])) / (kMaxOmega - kTaperStart);
+      float s = (gMaxOmega - fabsf(rho[i])) / (gMaxOmega - gTaperStart);
       s = s < 0.0f ? 0.0f : (s > 1.0f ? 1.0f : s);
       u *= s;
     }
 
-    if (!isfinite(u)) { u = 0.0f; gArmed = false; }
+    if (!isfinite(u)) { u = 0.0f; }
     u = u >  kTauMax ?  kTauMax : u;
     u = u < -kTauMax ? -kTauMax : u;
     tau[i] = u;
   }
 
-  if (norm3(phi) > kMaxTilt) { gArmed = false; }
-  for (int i = 0; i < 3; ++i) {
-    if (fabsf(rho[i]) > kMaxOmega) { gArmed = false; }
+  // --- latching trips: record WHY, print once, never auto-unlatch ---
+  if (gArmed && norm3(phi) > kMaxTilt) {
+    gArmed = false; gTripReason = TRIP_TILT;
+    Serial.println("# TRIP: tilt limit");
   }
-  if (!isfinite(phi[0]) || !isfinite(phi[1]) || !isfinite(phi[2]) ||
-      !isfinite(w_b[0]) || !isfinite(w_b[1]) || !isfinite(w_b[2])) {
-    gArmed = false;
+  for (int i = 0; i < 3; ++i) {
+    if (gArmed && fabsf(rho[i]) > gMaxOmega) {
+      gArmed = false; gTripReason = TRIP_OMEGA;
+      Serial.print("# TRIP: wheel speed limit, wheel ");
+      Serial.println(i == 0 ? "X" : i == 1 ? "Y" : "Z");
+    }
+  }
+  if (gArmed && (!isfinite(phi[0]) || !isfinite(phi[1]) || !isfinite(phi[2]) ||
+                 !isfinite(w_b[0]) || !isfinite(w_b[1]) || !isfinite(w_b[2]) ||
+                 !isfinite(tau[0]) || !isfinite(tau[1]) || !isfinite(tau[2]))) {
+    gArmed = false; gTripReason = TRIP_NAN;
+    Serial.println("# TRIP: non-finite state or torque");
   }
 
   static const float kLpTau = 5.0f;
@@ -585,42 +554,30 @@ void commandWheels(const float rho[3]) {
     gRhoLp[i] += alphaLp * (rho[i] - gRhoLp[i]);
     gLastTau[i]    = tau[i];
     gLastTauCmd[i] = tau_cmd;
+
+    const bool saturated = fabsf(tau_cmd) >= (kTauMax * 0.99f);
+    gSatDuty[i] += alphaLp * ((saturated ? 1.0f : 0.0f) - gSatDuty[i]);
+    gMotorTemp[i] = (float)wheelObj(i).last_result().values.temperature;
   }
 }
 
 
 // ----------------------------------------------------------------------------
-// SECTION 2e-2: AUTOMATIC TRIM ADAPTATION
+// SECTION 2e-2: AUTOMATIC TRIM ADAPTATION -- identical to Stage4_AutoTrim.ino
 // ----------------------------------------------------------------------------
-// Call once per cycle AFTER commandWheels() has updated gRhoLp for this
-// cycle -- gRhoLp (5 s low-pass of wheel speed) IS the "standing wheel
-// speed" the header note's derivation is built on; no separate filter is
-// kept here, reusing the one this file already computes for telemetry.
 
-// tau_a = 60 s (the note's recommended starting point, S3). Live-settable
-// with "k<value>" if 60 s turns out too slow/fast to watch converge --
-// the note's own table: 20s->8.765e-6  30s->5.843e-6  60s->2.922e-6
-// 120s->1.461e-6. About 200x slower than the control loop itself at the
-// default, which is the point: the two loops must not be able to interact.
-static float gKAdapt = 2.922e-6f;
+static float gKAdapt = 2.922e-6f;   // tau_a = 60 s -- see Stage4_AutoTrim.ino
 
-static const float kTiltQuiet  = 0.00872664619f;   // rad, 0.5 deg -- same
-                                                      // value as kArmGate,
-                                                      // not a coincidence:
-                                                      // both mean "close
-                                                      // enough to trust".
+static const float kTiltQuiet  = 0.00872664619f;   // rad, 0.5 deg
 static const float kOmegaQuiet = 0.10f;              // rad/s
 
 void updateTrim(float dt) {
-  // Freezes on disarm/any trip for free: gArmed goes false the same cycle
-  // a trip fires (see the checks above in commandWheels()), and this is
-  // gated on it -- "do not learn from a fall" without extra state.
   if (!gTrimEnabled || !gArmed) { return; }
-  if (norm3(phi) >= kTiltQuiet)  { return; }   // recovering, not quiescent
-  if (norm3(w_b)  >= kOmegaQuiet) { return; }   // still moving, not quiescent
+  if (norm3(phi) >= kTiltQuiet)  { return; }
+  if (norm3(w_b)  >= kOmegaQuiet) { return; }
 
   for (int i = 0; i < 3; ++i) {
-    gTrim[i] += gKAdapt * dt * gRhoLp[i];   // PLUS -- VERIFIED, see header
+    gTrim[i] += gKAdapt * dt * gRhoLp[i];   // PLUS -- VERIFIED, see Stage4_AutoTrim.ino
   }
   applyTrimGuards();
 }
@@ -643,6 +600,7 @@ void handleSerialCommands() {
     if (val != 0.0f) {
       if (norm3(phi) < kArmGate) {
         gArmed = true;
+        gTripReason = TRIP_NONE;   // manual re-arm clears the latch
         Serial.println("# gArmed = TRUE");
       } else {
         gArmed = false;
@@ -654,17 +612,18 @@ void handleSerialCommands() {
       gArmed = false;
       Serial.println("# gArmed = FALSE");
     }
-  } else if (cmd == 'g') {
-    gGainScale = val < 0.0f ? 0.0f : (val > 1.0f ? 1.0f : val);
-    Serial.print("# gGainScale = "); Serial.println(gGainScale, 3);
   } else if (cmd == 'c') {
     resolveCornerCandidate();
+  } else if (cmd == 'r') {
+    // Bookmark only -- no effect on control. Same convention as edge-
+    // bringup's Stage 5: send this the instant you let go, val is just a
+    // log label. For real time alignment, prefer detecting where phi
+    // starts moving on its own in the data over trusting this timestamp --
+    // human release timing has more jitter than the control loop does.
+    Serial.print("# RECORD_START t_ms="); Serial.print(millis());
+    Serial.print(" marker="); Serial.println(val, 2);
   } else if (cmd == 'z') {
     if (val != 0.0f) {
-      // Fast-start seed: -= (not +=) because gTrim is ADDED to raw phi
-      // here (opposite convention from Stage4_FullLaw.ino's gPhiOffset,
-      // which was subtracted) -- this makes corrected phi read ~0 right
-      // now, same net effect as the old "z1", different sign to match.
       gTrim[0] -= phi[0];
       gTrim[1] -= phi[1];
       gTrim[2] -= phi[2];
@@ -673,13 +632,6 @@ void handleSerialCommands() {
       Serial.print(gTrim[0] * (float)RAD_TO_DEG, 3); Serial.print(",");
       Serial.print(gTrim[1] * (float)RAD_TO_DEG, 3); Serial.print(",");
       Serial.print(gTrim[2] * (float)RAD_TO_DEG, 3); Serial.println(" deg");
-      if (norm3(gTrim) > 0.1745329f) {   // ~10 deg > kTrimMax already, so
-                                          // this only fires right at the
-                                          // 2 deg clamp boundary -- still
-                                          // worth flagging.
-        Serial.println("# NOTE: seed hit/near the 2 deg clamp -- that's");
-        Serial.println("#   mechanical (shim it), not something trim fixes.");
-      }
     } else {
       gTrim[0] = gTrim[1] = gTrim[2] = 0.0f;
       Serial.println("# gTrim cleared to 0,0,0");
@@ -691,8 +643,21 @@ void handleSerialCommands() {
   } else if (cmd == 'k') {
     gKAdapt = val;
     Serial.print("# gKAdapt = "); Serial.println(gKAdapt, 8);
-    Serial.println("#   (note's table: 20s->8.765e-6 30s->5.843e-6 "
-                    "60s->2.922e-6 120s->1.461e-6)");
+  } else if (cmd == 'o') {
+    // Test 6: set omega_cap. "o40" restores the real policy default.
+    gMaxOmega = val;
+    Serial.print("# gMaxOmega (omega_cap) = "); Serial.print(gMaxOmega, 2);
+    Serial.println(" rad/s");
+    if (gTaperStart >= gMaxOmega) {
+      Serial.println("# WARNING: gTaperStart >= gMaxOmega -- taper has no "
+                      "room to fade in, set p below o.");
+    }
+  } else if (cmd == 'p') {
+    // Test 6: set taper_start. "p36" restores the real policy default
+    // (90% of the real 40 rad/s cap).
+    gTaperStart = val;
+    Serial.print("# gTaperStart = "); Serial.print(gTaperStart, 2);
+    Serial.println(" rad/s");
   } else if (cmd == 'h') {
     gHalted = (val != 0.0f);
     if (gHalted && gArmed) {
@@ -703,9 +668,10 @@ void handleSerialCommands() {
     Serial.println(gHalted ? "TRUE (idle -- no IMU reads, no CAN traffic)"
                             : "FALSE (resumed, still DISARMED -- send a1)");
   } else {
-    Serial.println("# unknown. use: a<0/1>  g<0..1>  c (re-resolve)  "
-                    "z<0/1> (clear/seed trim)  x<0/1> (freeze/resume "
-                    "adaptation)  k<value> (set gKAdapt)  h<0/1>");
+    Serial.println("# unknown. use: a<0/1>  c (re-resolve)  r<val> (log marker)  "
+                    "z<0/1> (clear/seed trim)  x<0/1> (freeze/resume trim)  "
+                    "k<value> (trim gain)  o<rad/s> (omega_cap)  "
+                    "p<rad/s> (taper_start)  h<0/1>");
   }
 }
 
@@ -717,7 +683,7 @@ void handleSerialCommands() {
 void setup() {
   Serial.begin(115200);
   while (!Serial) {}
-  Serial.println("started - CORNER STAGE 4: FULL LAW + AUTOMATIC TRIM (cube held by hand)");
+  Serial.println("started - CORNER STAGE 5: RELEASE + AUTO TRIM (stop/catch + e-stop, cube free)");
 
   const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
   while (errorCode != 0) {
@@ -744,16 +710,10 @@ void setup() {
   }
   Serial.println("BMI270 connected!");
 
-  // 800 Hz, not 400 -- cube-bringup/Stage0c_IMUJitter.ino already found and
-  // documented this exact problem (Phase 0.4): this loop runs at 500 Hz
-  // (kPeriodMs=2 above), but every OTHER file in this progression still
-  // configured the IMU's own output rate at 400 Hz, meaning the loop polls
-  // FASTER than the sensor produces new samples -- roughly 1 in 5 reads is
-  // a stale repeat of the previous one, not new information. Stage0c
-  // tested and validated 800 Hz specifically to fix this (bwp left at
-  // default there too -- see that file's own TODO on re-deriving group
-  // delay for the real (ODR, bwp) pair if it ever matters). Found via the
-  // Fine-Tuning Test Plan's Test 2 (estimator lag audit) code-read.
+  // 800 Hz, not 400 -- Test 2 finding, see cube-bringup/Stage0c_IMUJitter.ino
+  // (already validated this fix) and Stage4_AutoTrim.ino's header for the
+  // full reasoning: this loop runs at 500 Hz, so a 400 Hz ODR means the
+  // loop outruns the sensor and ~1 in 5 reads was a stale repeat.
   if (imu.setAccelODR(BMI2_ACC_ODR_800HZ) != BMI2_OK ||
       imu.setGyroODR(BMI2_GYR_ODR_800HZ)  != BMI2_OK) {
     Serial.println("Warning: could not raise BMI270 ODR to 800 Hz");
@@ -775,17 +735,17 @@ void setup() {
                   "om_x_dps\tom_y_dps\tom_z_dps\trho_x\trho_y\trho_z\t"
                   "rho_x_lp\trho_y_lp\trho_z_lp\t"
                   "tau_x\ttau_y\ttau_z\ttau_cmd_x\ttau_cmd_y\ttau_cmd_z\t"
-                  "armed\tgain_scale\t"
-                  "trim_x_deg\ttrim_y_deg\ttrim_z_deg\ttrim_com_mm\ttrim_enabled");
-  Serial.println("# STARTS DISARMED. a1 refused unless norm3(phi) < ARM_GATE");
-  Serial.println("# (0.5 deg) -- get close to the resolved corner first, or send");
-  Serial.println("# z1 to fast-start (seeds trim so corrected phi reads ~0 now).");
-  Serial.println("# Trim then adapts AUTOMATICALLY while armed+quiescent -- watch");
-  Serial.println("# trim_x/y/z_deg converge in telemetry, no further z1 needed.");
-  Serial.println("# z0 clears trim, x0/x1 freezes/resumes adaptation without");
-  Serial.println("# disarming, k<value> sets the adaptation gain (default tau_a=60s).");
-  Serial.println("# Velocity cap is loosened this stage (kMaxOmega ~2000 RPM, not");
-  Serial.println("# the 40 rad/s policy value) -- a0 (disarm) is the real safety net.");
+                  "armed\ttrip_reason\t"
+                  "trim_x_deg\ttrim_y_deg\ttrim_z_deg\ttrim_com_mm\ttrim_enabled\t"
+                  "temp_x\ttemp_y\ttemp_z\tsat_duty_x\tsat_duty_y\tsat_duty_z\t"
+                  "loop_overrun_count");
+  Serial.println("# STARTS DISARMED. Stop/catch + e-stop ready BEFORE sending a1.");
+  Serial.println("# trip_reason: 0 none  1 tilt  2 omega  3 nan");
+  Serial.println("# z1/z0 seed/clear trim, x1/x0 freeze/resume adaptation,");
+  Serial.println("# k<value> sets adaptation gain (default tau_a=60s).");
+  Serial.println("# o<rad/s>/p<rad/s> set omega_cap/taper_start LIVE (Test 6 --");
+  Serial.println("# real policy default is 40/36, o40 p36 restores it).");
+  Serial.println("# Telemetry decimated 10x (~50 Hz) -- see header note.");
   Serial.println("# h1 halts (idle + disarm), h0 resumes (still disarmed).");
 
   gNextSendMillis = millis();
@@ -795,6 +755,20 @@ void setup() {
 // ----------------------------------------------------------------------------
 // SECTION 4: loop()
 // ----------------------------------------------------------------------------
+
+// Test 7: any cycle whose measured dt exceeds 1.5x nominal (2ms -> 3ms)
+// counts as an overrun -- something (a Serial write, a CAN retry, GC-style
+// pause) made this cycle late. Compiled-in threshold, not live-settable --
+// unlike the Test 6 constants above, there's no bench procedure that wants
+// to move this around, it's a pass/fail instrument, not a tuning knob.
+static const float kOverrunThresholdS = 0.003f;
+static uint32_t gLoopOverrunCount = 0;
+
+// Telemetry decimation -- see header note. NOT the WiFi builds' bandwidth
+// reasoning (this is Serial/USB, not a baud-rate-limited UART); this is
+// purely "a 30 min run doesn't need 900k lines to make its point."
+static const uint32_t kTelemetryDecim = 10;   // 500 Hz / 10 = 50 Hz
+static uint32_t gTelemetryCounter = 0;
 
 void loop() {
   handleSerialCommands();
@@ -812,6 +786,7 @@ void loop() {
   lastMicros = nowMicros;
   dtInitialized = true;
   if (dt <= 0.0f || dt > 0.5f) { dt = kPeriodMs * 1e-3f; }
+  if (dt > kOverrunThresholdS) { gLoopOverrunCount++; }
 
   float aImu[3], wImu[3];
   imu.getSensorData();
@@ -828,34 +803,42 @@ void loop() {
   commandWheels(rho);
   updateTrim(dt);   // after commandWheels() so this cycle's gRhoLp is fresh
 
-  printState(time, rho, gRhoLp, gLastTau, gLastTauCmd, gArmed, gGainScale);
+  if (++gTelemetryCounter >= kTelemetryDecim) {
+    gTelemetryCounter = 0;
+    printState(time, rho, gRhoLp, gLastTau, gLastTauCmd, gArmed, gTripReason,
+              gMotorTemp, gSatDuty, gLoopOverrunCount);
+  }
 }   // end of loop()
 
 
 // ============================================================================
 // NOTES
 // ----------------------------------------------------------------------------
-// This file vs Stage4_FullLaw.ino: identical control law, identical corner
-// candidate table, identical velocity-cap/friction-FF/arm-gate policy --
-// the ONLY behavioral difference is that gTrim (automatic, adapting) has
-// replaced gPhiOffset (manual, snapshot-and-freeze). If something looks
-// wrong here that isn't about trim specifically, it's worth checking
-// whether Stage4_FullLaw.ino has the same problem before assuming this
-// file's changes caused it.
+// This file is Cube Fine-Tuning -- Test Plan.md's Session 2/3 (Tests 5, 6,
+// 7), on ONE corner. Suggested order, matching the Test Plan's own:
+//   1. Test 5: arm, let trim converge (watch trim_x/y/z_deg settle, ~4
+//      time constants at the default tau_a=60s is ~4 min), or "z1" to
+//      fast-start.
+//   2. Test 6: with trim converged, read the settled rho_x/y/z_lp
+//      (standing_speed_report.py, or just watch telemetry), set
+//      "o<3x that>" and "p<90% of that>", verify it still balances a
+//      couple minutes, then step both toward the real policy (o40 p36)
+//      as trim settles further.
+//   3. Test 7: once 6 is done, arm and leave it -- 30 min, then check
+//      trim/standing-speed/temperature/loop_overrun_count/sat_duty
+//      against Test 7's table (plot_session_csv.py --cols trim,wheels,
+//      endurance, or fine-tuning/README.md for the exact commands).
 //
-// Next steps once trim behavior is trusted on real hardware:
-//   - Port the SAME replacement into Stage5_Release.ino (this file is
-//     Stage 4 only, per the request that started it -- Stage 5 still has
-//     the old manual gPhiOffset/z1/z0 and the real DISARM/OMEGA_CAP policy
-//     untouched).
-//   - EEPROM/LittleFS persistence -- save gTrim once converged (see the
-//     header note's guard table), load it back at boot instead of
-//     starting at zero every power-up.
-//   - The 180-deg flip test (Automatic Trim.md S5): let trim converge,
-//     rotate the cube 180 deg about the vertical on the SAME corner, let
-//     it converge again. A COM offset reverses sign; an IMU mounting
-//     misalignment does not -- this is the only way to tell the two
-//     apart, and it matters once multiple corners are being trimmed
-//     (a mounting misalignment is the same on all eight, a COM offset
-//     changes direction per corner).
+// Re-derive Kp once the battery cable/DC-DC (and eventually the flight
+// battery itself) are actually mounted (measure -> derive -> re-tune, same
+// workflow as everywhere else in this project) -- trim will re-converge to
+// a different, smaller value once they are, that is not a sign anything
+// here is wrong. Then repeat this file's Tests 5-7 for the OTHER SEVEN
+// corners before trusting any of them -- a result on one corner says
+// nothing about another (same discipline edge-bringup established per-
+// axis, now per-corner). Once multiple corners are validated, corner-to-
+// corner transitions are where the quaternion/MEKF estimator becomes
+// load-bearing (Attitude representation for the firmware.md section 4) --
+// this reduced-attitude gam estimator is deliberately NOT that, and isn't
+// meant to be pushed into large-angle territory.
 // ============================================================================
