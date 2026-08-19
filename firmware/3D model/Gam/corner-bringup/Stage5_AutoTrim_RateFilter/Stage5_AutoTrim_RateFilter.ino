@@ -30,8 +30,11 @@
 // 15-state augmented model) -- see Stage4_AutoTrim_RateFilter.ino for the
 // derivation. Still live-settable with "k<value>".
 //
-// NOT changed here: the Kp gain matrix itself. kCorners below is still the
-// OLD (1.5668 kg, no strut) table -- see the TODO at the table.
+// UPDATE 2026-08-19: corner [-1,-1,-1]'s Kp below is now the re-derived
+// matrix for the new plant (mass 1.633 kg + strut) -- user-supplied. The
+// other seven corners are still the OLD (1.5668 kg, no strut) table --
+// this is a mixed-generation table, not internally consistent
+// corner-to-corner -- see the TODO at the table.
 //
 // PHYSICAL STOP/CATCH IN PLACE. E-STOP IN HAND. This is the stage where the
 // cube is NOT held by hand. The control law is identical to Stage 4 (this
@@ -317,16 +320,32 @@ struct CornerCandidate {
                      // equivalent COM offset in mm for telemetry.
 };
 
-// TODO: STALE -- computed for mass 1.5668 kg, no corner-to-housing strut.
-// hw-run-analysis.md references gains re-derived for the new plant (mass
-// 1.633 kg, plus the new rigid strut) -- those numbers are not here yet.
-// Replace this whole table (gB/Kp/ellM per corner) once available.
+// TODO: MIXED-GENERATION PLANT. Corner [-1,-1,-1]'s Kp below was UPDATED
+// 2026-08-19 for mass 1.633 kg + the new corner-to-housing strut (user-
+// supplied); the OTHER SEVEN corners are still the 1.5668 kg/no-strut
+// values. This table is NOT internally consistent across corners -- fine
+// for continued single-corner [-1,-1,-1] bring-up, but do not resolve
+// onto or trust any OTHER corner's numbers until they're re-derived the
+// same way. [-1,-1,-1]'s own gB/ell/Sg/lambda/theta_eq were NOT provided
+// with the new Kp and are still the old (pre-strut) values -- see that
+// entry's own comment. Replace the remaining seven corners (gB/Kp/ellM)
+// once available.
 static const CornerCandidate kCorners[8] = {
-  { "[-1,-1,-1]"  // lean 0.797 deg vs body diagonal, ell 122.84 mm, Sg 1.8875, lambda 8.2572
+  { "[-1,-1,-1]"  // Kp UPDATED 2026-08-19 for mass 1.633 kg + new corner-to-
+                  // housing strut (user-supplied). gB/ell/Sg/lambda/theta_eq
+                  // BELOW ARE STILL THE OLD VALUES (0.797 deg lean, 122.84mm,
+                  // Sg 1.8875, lambda 8.2572, pre-strut/1.5668 kg) -- not
+                  // provided with the new Kp, see the TODO above kCorners.
+                  // Strut note as given: "pole runs 4.49 deg off the
+                  // balancing diagonal, a compression member straight down
+                  // the load path" -- IF that is this corner's new theta_eq,
+                  // it's a ~3.7 deg shift trim's +/-2 deg clamp (kTrimMax)
+                  // cannot fully absorb; watch for trim pinned at the clamp
+                  // with residual tilt on the bench before trusting this.
     , { -0.571549475f, -0.588645577f, -0.571688354f }
-    , { { -6.9157443f, 3.39226651f, 3.42117763f, -0.834802926f, 0.420730621f, 0.42704013f, -0.000700236589f, 0.00623514736f, 0.00621826435f },  // wheel X
-        { 3.51941299f, -6.8296299f, 3.51364994f, 0.412131369f, -0.848057508f, 0.411711216f, 0.00382628222f, -0.00316504063f, 0.00381609239f },  // wheel Y
-        { 3.42913675f, 3.39467001f, -6.92366505f, 0.426502436f, 0.419758797f, -0.837698817f, 0.00606757682f, 0.00607034843f, -0.000870343472f } } // wheel Z
+    , { { -7.0685f, 3.4801f, 3.4675f, -0.8446f, 0.4235f, 0.4244f, -0.000998f, 0.006001f, 0.005931f },  // wheel X
+        { 3.5743f, -6.9184f, 3.5758f, 0.4173f, -0.8435f, 0.4177f, 0.004252f, -0.002662f, 0.004252f },  // wheel Y
+        { 3.4703f, 3.4844f, -7.0670f, 0.4242f, 0.4237f, -0.8452f, 0.005879f, 0.005948f, -0.001049f } } // wheel Z
     , 0.797f, 0.12284115f },
   { "[-1,-1,+1]"  // lean 3.170 deg vs body diagonal, ell 128.54 mm, Sg 1.9750, lambda 8.1212
     , { -0.546220303f, -0.562558711f, 0.620621562f }
@@ -942,10 +961,11 @@ void loop() {
 // workflow as everywhere else in this project) -- trim will re-converge to
 // a different, smaller value once they are, that is not a sign anything
 // here is wrong. The SAME applies to the new mass (1.633 kg) and strut
-// hw-run-analysis.md references -- kCorners is still the old table (see
-// the TODO above it); drop in the re-derived Kp/gB/ellM once available,
-// before drawing conclusions from a multi-corner comparison. Then repeat
-// this file's Tests 5-7 for the OTHER SEVEN corners before trusting any of
+// hw-run-analysis.md references -- corner [-1,-1,-1]'s Kp is done
+// (2026-08-19), the other seven are still the old table (see the TODO
+// above it); drop in their re-derived Kp/gB/ellM once available, before
+// drawing conclusions from a multi-corner comparison. Then repeat this
+// file's Tests 5-7 for the OTHER SEVEN corners before trusting any of
 // them -- a result on one corner says nothing about another (same
 // discipline edge-bringup established per-axis, now per-corner). Once
 // multiple corners are validated, corner-to-corner transitions are where
