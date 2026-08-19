@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cubli — Balance Console</title>
+
+<!-- Everything is served from static/vendor/. Nothing here reaches the
+     network: the bench runs off a phone hotspot and the instrument must not
+     go blank when cellular drops. -->
+<script src="/static/vendor/tailwind.min.js"></script>
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "/static/vendor/three.module.min.js" } }
+</script>
+
+<style>
+  :root { color-scheme: dark; }
+  body { background:#04070d; }
+  .glow-cyan  { box-shadow: 0 0 18px rgba(34,211,238,.18), inset 0 0 0 1px rgba(34,211,238,.18); }
+  .glow-amber { box-shadow: 0 0 18px rgba(251,191,36,.20), inset 0 0 0 1px rgba(251,191,36,.25); }
+  .glow-red   { box-shadow: 0 0 26px rgba(244,63,94,.35), inset 0 0 0 1px rgba(244,63,94,.45); }
+  .panel { background:linear-gradient(180deg,rgba(13,22,38,.92),rgba(8,14,26,.92)); border:1px solid rgba(56,189,248,.13); }
+  .grid-bg {
+    background-image:linear-gradient(rgba(34,211,238,.045) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(34,211,238,.045) 1px,transparent 1px);
+    background-size:34px 34px;
+  }
+  .mono { font-family:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace; }
+  @keyframes livepulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .pulse { animation:livepulse 1.1s ease-in-out infinite; }
+  #console::-webkit-scrollbar { width:8px; }
+  #console::-webkit-scrollbar-thumb { background:rgba(34,211,238,.25); border-radius:4px; }
+  .btn { transition:all .12s ease; }
+  .btn:active:not(:disabled) { transform:translateY(1px); }
+  .btn:disabled { opacity:.32; cursor:not-allowed; }
+</style>
+</head>
+
+<body class="grid-bg text-slate-200 min-h-screen antialiased">
+
+<!-- ══ HEADER ══ Disarm and Halt live here so they are never scrolled away.
+     They are the only controls that fire without a confirm step. -->
+<header class="sticky top-0 z-40 backdrop-blur-md bg-[#04070d]/85 border-b border-cyan-500/15">
+  <div class="max-w-[1800px] mx-auto px-5 py-2.5 flex items-center gap-4">
+    <div class="flex items-baseline gap-2.5">
+      <span class="text-cyan-300 font-bold tracking-[0.22em] text-sm">CUBLI</span>
+      <span class="text-slate-500 text-[11px] tracking-widest uppercase">Balance Console</span>
+    </div>
+
+    <div id="pill-link" class="mono text-[11px] px-2.5 py-1 rounded border border-slate-700 text-slate-500">
+      ○ NO LINK
+    </div>
+    <div id="pill-mode" class="mono text-[11px] px-2.5 py-1 rounded border border-slate-700 text-slate-500">
+      SCHEMA —
+    </div>
+    <div id="pill-armed" class="mono text-[11px] font-bold px-3 py-1 rounded border border-slate-700 text-slate-500">
+      DISARMED
+    </div>
+    <div id="pill-rec" class="mono text-[11px] px-2.5 py-1 rounded border border-slate-700 text-slate-600 hidden">
+      ● REC
+    </div>
+
+    <div class="flex-1"></div>
+
+    <button id="btn-disarm" class="btn px-5 py-1.5 rounded bg-rose-600/90 hover:bg-rose-500 text-white font-bold text-xs tracking-widest glow-red">
+      DISARM
+    </button>
+    <button id="btn-halt" class="btn px-5 py-1.5 rounded bg-amber-500/85 hover:bg-amber-400 text-black font-bold text-xs tracking-widest glow-amber">
+      HALT
+    </button>
+  </div>
+  <!-- Raised when the firmware reports an arm gate wider than anything the
+       generated gains justify. See the EdgeBalance_WiFi.ino:484 note. -->
+  <div id="gate-warn" class="hidden px-5 py-1.5 bg-rose-950/70 border-t border-rose-500/40 text-rose-300 text-[11px] mono"></div>
+</header>
+
+<main class="max-w-[1800px] mx-auto px-5 py-4 grid grid-cols-12 gap-4">
+
+  <!-- ══ CONTROL COLUMN ══ -->
+  <section class="col-span-12 xl:col-span-3 space-y-4">
+
+    <div class="panel rounded-lg p-4">
+      <h2 class="text-[10px] tracking-[0.2em] text-cyan-400/70 uppercase mb-3">Build</h2>
+      <!-- Auto-detect is the real answer: the field count says which sketch is
+           flashed. The override exists for a quiet link, not to change the cube. -->
+      <div class="grid grid-cols-3 gap-1.5 mb-2">
+        <button data-mode="auto"   class="mode-btn btn px-2 py-2 rounded text-[11px] font-semibold tracking-wide">AUTO</button>
+        <button data-mode="edge"   class="mode-btn btn px-2 py-2 rounded text-[11px] font-semibold tracking-wide">EDGE</button>
+        <button data-mode="corner" class="mode-btn btn px-2 py-2 rounded text-[11px] font-semibold tracking-wide">CORNER</button>
+      </div>
+      <p class="text-[10px] text-slate-500 leading-snug">
+        Detected from packet width — 10 fields = edge, 21 = corner. The cube's
+        mode is set by which sketch is flashed; this only tells the dashboard
+        how to read the stream.
+      </p>
+    </div>
+
+    <div class="panel rounded-lg p-4 space-y-2">
+      <h2 class="text-[10px] tracking-[0.2em] text-cyan-400/70 uppercase mb-1">Control</h2>
+      <button id="btn-arm" class="btn w-full px-3 py-3 rounded bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold text-sm tracking-[0.15em]">
+        ARM
+      </button>
+      <p id="arm-hint" class="text-[10px] text-slate-500 mono"></p>
+
+      <div class="grid grid-cols-2 gap-1.5 pt-1">
+        <button id="btn-resolve" class="btn px-2 py-2 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold">RE-RESOLVE</button>
+        <button id="btn-resume"  class="btn px-2 py-2 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold">RESUME</button>
+        <button id="btn-tare"    class="btn px-2 py-2 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold">TARE φ</button>
+        <button id="btn-untare"  class="btn px-2 py-2 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold">CLEAR φ</button>
+      </div>
+
+      <div class="pt-2">
+        <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+          <span class="tracking-widest uppercase">Gain scale</span>
+          <span id="gain-val" class="mono text-cyan-300">1.000</span>
+        </div>
+        <input id="gain" type="range" min="0" max="1" step="0.05" value="1"
+               class="w-full accent-cyan-400 cursor-pointer">
+      </div>
+    </div>
+
+    <div class="panel rounded-lg p-4">
+      <h2 class="text-[10px] tracking-[0.2em] text-cyan-400/70 uppercase mb-3">Recording</h2>
+      <div class="grid grid-cols-2 gap-1.5">
+        <button id="btn-rec-start" class="btn px-2 py-2.5 rounded bg-cyan-600/85 hover:bg-cyan-500 text-white text-[11px] font-bold tracking-wider">● START</button>
+        <button id="btn-rec-stop"  class="btn px-2 py-2.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-bold tracking-wider">■ STOP</button>
+      </div>
+      <p id="rec-status" class="text-[10px] text-slate-500 mono mt-2 break-all">idle</p>
+      <p class="text-[10px] text-slate-600 leading-snug mt-2">
+        Writes to <span class="mono">telemetry/plot/</span> at full stream rate
+        with the same header the matplotlib scripts use, so
+        <span class="mono">plot_session_csv.py</span> reads it unchanged.
+      </p>
+    </div>
+  </section>
+
+  <!-- ══ MAIN COLUMN ══ -->
+  <section class="col-span-12 xl:col-span-9 space-y-4">
+
+    <div class="grid grid-cols-12 gap-4">
+      <!-- 3D. Definite height, not min-height: the canvas fills it with
+           inset-0, and `height:100%` against an auto-height parent would
+           collapse to the canvas's 150px intrinsic size (or to nothing). -->
+      <div class="col-span-12 lg:col-span-7 panel rounded-lg overflow-hidden relative"
+           style="height:clamp(340px,46vh,520px)">
+        <div class="absolute top-3 left-4 z-10 pointer-events-none">
+          <div class="text-[10px] tracking-[0.2em] text-cyan-400/70 uppercase">Attitude</div>
+          <div id="pivot-label" class="mono text-lg font-bold text-amber-300 leading-tight">—</div>
+          <div id="pivot-sub" class="mono text-[10px] text-slate-500">awaiting resolve</div>
+        </div>
+        <div class="absolute bottom-3 left-4 z-10 pointer-events-none text-[10px] mono text-slate-600 leading-relaxed">
+          rotation = axis-angle from φ<br>
+          <span class="text-slate-700">(tilt error vs equilibrium, not Euler)</span>
+        </div>
+        <canvas id="cube" class="absolute inset-0 w-full h-full block"></canvas>
+        <div id="cube-error" class="hidden absolute inset-0 flex items-center justify-center p-6 text-center mono text-[11px] text-rose-300"></div>
+      </div>
+
+      <!-- Tiles -->
+      <div class="col-span-12 lg:col-span-5 grid grid-cols-2 gap-3 content-start">
+        <div class="panel rounded-lg p-3 col-span-2 glow-cyan">
+          <div class="text-[10px] tracking-[0.2em] text-cyan-400/70 uppercase">|φ| tilt error</div>
+          <div class="flex items-baseline gap-2">
+            <span id="m-phi" class="mono text-4xl font-bold text-cyan-300">—</span>
+            <span class="text-slate-500 text-sm">deg</span>
+          </div>
+          <div class="h-1.5 bg-slate-800 rounded mt-2 overflow-hidden">
+            <div id="phi-bar" class="h-full bg-cyan-400 transition-all duration-100" style="width:0%"></div>
+          </div>
+          <div id="m-gate" class="text-[10px] mono text-slate-500 mt-1">gate —</div>
+        </div>
+
+        <div class="panel rounded-lg p-3" id="tile-a">
+          <div class="text-[10px] tracking-[0.18em] text-slate-500 uppercase" id="lbl-a">φ x / y / z</div>
+          <div id="m-a" class="mono text-sm text-slate-200 leading-relaxed">—</div>
+        </div>
+        <div class="panel rounded-lg p-3" id="tile-b">
+          <div class="text-[10px] tracking-[0.18em] text-slate-500 uppercase" id="lbl-b">ω x / y / z</div>
+          <div id="m-b" class="mono text-sm text-slate-200 leading-relaxed">—</div>
+        </div>
+        <div class="panel rounded-lg p-3" id="tile-c">
+          <div class="text-[10px] tracking-[0.18em] text-slate-500 uppercase" id="lbl-c">Wheels — RPM</div>
+          <div id="m-c" class="mono text-sm text-slate-200 leading-relaxed">—</div>
+        </div>
+        <div class="panel rounded-lg p-3" id="tile-d">
+          <div class="text-[10px] tracking-[0.18em] text-slate-500 uppercase" id="lbl-d">τ — N·m</div>
+          <div id="m-d" class="mono text-sm text-slate-200 leading-relaxed">—</div>
+        </div>
+
+        <!-- Replaces the battery gauge in the original spec: nothing in either
+             wire format carries voltage or current. This is what actually
+             answers "is it safe to arm". -->
+        <div class="panel rounded-lg p-3 col-span-2">
+          <div class="text-[10px] tracking-[0.18em] text-slate-500 uppercase mb-1">Link health</div>
+          <div class="grid grid-cols-4 gap-2 mono text-[11px]">
+            <div><div class="text-slate-600 text-[9px] uppercase">Rate</div><span id="m-rate" class="text-slate-200">—</span></div>
+            <div><div class="text-slate-600 text-[9px] uppercase">Age</div><span id="m-age" class="text-slate-200">—</span></div>
+            <div><div class="text-slate-600 text-[9px] uppercase">Packets</div><span id="m-pkts" class="text-slate-200">—</span></div>
+            <div><div class="text-slate-600 text-[9px] uppercase">Gain</div><span id="m-gain" class="text-slate-200">—</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div id="charts" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+
+    <!-- Console -->
+    <div class="panel rounded-lg overflow-hidden">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-cyan-500/10">
+        <h2 class="text-[10px] tracking-[0.2em] text-cyan-400/70 uppercase">Firmware console</h2>
+        <button id="btn-clear" class="text-[10px] text-slate-500 hover:text-slate-300">clear</button>
+      </div>
+      <div id="console" class="mono text-[11px] leading-relaxed p-3 h-44 overflow-y-auto space-y-0.5">
+        <div class="text-slate-600">waiting for telemetry…</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -63,9 +63,10 @@ CSV_FLUSH_S = 0.5
 
 HERE = Path(__file__).resolve().parent
 STATIC_DIR = HERE / "static"
-# parents[2] == FINAL/, so recordings land beside the ones the matplotlib
-# scripts write and plot_session_csv.py finds them with no changes.
-OUT_DIR = HERE.parents[2] / "telemetry" / "plot"
+# HERE = FINAL/WIFIMODE/dashboard, so parents[1] == FINAL/. Recordings land
+# beside the ones the matplotlib scripts write, and plot_session_csv.py finds
+# them with no changes.
+OUT_DIR = HERE.parents[1] / "telemetry" / "plot"
 
 
 class Hub:
@@ -123,10 +124,15 @@ class Hub:
         # makes the NEXT recvfrom() raise ConnectionResetError from the ICMP
         # Port Unreachable. That happens constantly during a desk test (the
         # heartbeat goes to a XIAO that isn't there) and would kill the reader
-        # thread on the first tick. The reader catches it too, belt and braces.
+        # thread on the first tick.
+        #
+        # CPython's socket.ioctl() whitelists its control codes and raises
+        # ValueError on this one, so the call is best-effort -- the reader's
+        # own ConnectionResetError handler is what actually keeps the stream
+        # alive, and this only spares it the work when the platform allows.
         if sys.platform == "win32":
             SIO_UDP_CONNRESET = 0x9800000C
-            with contextlib.suppress(OSError):
+            with contextlib.suppress(OSError, ValueError, AttributeError):
                 s.ioctl(SIO_UDP_CONNRESET, False)
 
         self.sock = s

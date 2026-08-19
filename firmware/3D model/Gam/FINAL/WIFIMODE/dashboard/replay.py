@@ -33,6 +33,8 @@ import threading
 import time
 from pathlib import Path
 
+# parents[] here counts from the FILE, so parents[2] == FINAL/
+# (dashboard -> WIFIMODE -> FINAL).
 OUT_DIR = Path(__file__).resolve().parents[2] / "telemetry" / "plot"
 DEST = ("127.0.0.1", 4210)
 
