@@ -37,20 +37,56 @@ CORNER_COLS = [
 EDGE_COLS = ["t_ms", "theta_deg", "theta_dot_dps", "tau_Nm", "tau_cmd_Nm",
              "armed", "gain_scale", "wheel_omega_lp", "wheel_pos", "wheel_vel"]
 
+# ---------------------------------------------------------------------------
+# The corner family has grown. Widths, and the sketch that emits each, mirror
+# ../../plot_session_csv.py -- THAT FILE IS THE SOURCE OF TRUTH for column
+# names and it already carries all of these; keep this table in step with it.
+# (It is not imported because it pulls in matplotlib at module scope, which the
+# server has no business loading.)
+#
+# Every corner variant keeps the first 19 columns identical, so phi/om/rho/tau
+# live at fixed indices no matter which build is flashed -- that is what lets
+# the dashboard treat them as one family.
+#
+# The Stage5 "endurance" variants are the exception worth knowing: their
+# column 20 is trip_reason, NOT gain_scale. Reading it as a gain would show a
+# trip code in the gain tile, so those schemas declare gain_idx = None.
+# ---------------------------------------------------------------------------
+
+_TRIM = ["trim_x_deg", "trim_y_deg", "trim_z_deg", "trim_com_mm", "trim_enabled"]
+_FILT = ["om_x_filt_dps", "om_y_filt_dps", "om_z_filt_dps"]
+
+CORNER_TRIM_COLS = CORNER_COLS + _TRIM                      # Stage4_AutoTrim, 26
+CORNER_TRIM_FILT_COLS = CORNER_TRIM_COLS + _FILT            # + RateFilter,    29
+
+CORNER_ENDURANCE_COLS = CORNER_COLS[:20] + ["trip_reason"] + _TRIM + [
+    "temp_x", "temp_y", "temp_z",
+    "sat_duty_x", "sat_duty_y", "sat_duty_z",
+    "loop_overrun_count",
+]                                                            # Stage5_AutoTrim, 33
+CORNER_ENDURANCE_FILT_COLS = CORNER_ENDURANCE_COLS + _FILT   # + RateFilter,   36
+
+
+def _corner(cols, prefix, gain_idx=20, grammar="autotrim"):
+    # halt letter differs by grammar -- see KEEPALIVE / HALT below.
+    return {"cols": cols, "n": len(cols), "armed_idx": 19, "gain_idx": gain_idx,
+            "rate_hz": 250.0,          # kTelemetryDecim = 2 over a 500 Hz loop
+            "prefix": prefix, "resolve_cmd": "c",
+            "halt_cmd": "p" if grammar == "legacy" else "h",
+            "grammar": grammar, "family": "corner"}
+
+
 # Per-schema constants. `armed_idx` is the authoritative armed flag -- the
 # column, not the '#' echo, because the control law also clears it by itself
 # on an overtilt / overspeed / NaN trip and never announces that.
 SCHEMAS = {
-    "corner": {
-        "cols": CORNER_COLS,
-        "n": len(CORNER_COLS),
-        "armed_idx": 19,
-        "gain_idx": 20,
-        "rate_hz": 250.0,      # 500 Hz loop, kTelemetryDecim=2 (CornerBalance_WiFi.ino:156)
-        "prefix": "telemetry_corner",
-        "resolve_cmd": "c",
-        "halt_cmd": "p",       # NOT 'h' -- see COMMAND WHITELIST below
-    },
+    "corner": _corner(CORNER_COLS, "telemetry_corner", grammar="legacy"),
+    "corner_trim": _corner(CORNER_TRIM_COLS, "telemetry_corner_trim"),
+    "corner_trim_filt": _corner(CORNER_TRIM_FILT_COLS, "telemetry_corner_trimfilt"),
+    "corner_endurance": _corner(CORNER_ENDURANCE_COLS,
+                                "telemetry_corner_endurance", gain_idx=None),
+    "corner_endurance_filt": _corner(CORNER_ENDURANCE_FILT_COLS,
+                                     "telemetry_corner_endurancefilt", gain_idx=None),
     "edge": {
         "cols": EDGE_COLS,
         "n": len(EDGE_COLS),
@@ -60,10 +96,24 @@ SCHEMAS = {
         "prefix": "telemetry_edge",
         "resolve_cmd": "e",
         "halt_cmd": None,      # the edge build has no halt command at all
+        "family": "edge",
     },
 }
 
 BY_FIELD_COUNT = {SCHEMAS[k]["n"]: k for k in SCHEMAS}
+assert len(BY_FIELD_COUNT) == len(SCHEMAS), "two schemas share a field count"
+
+
+def split_fields(line):
+    """Split a telemetry line, tab or comma.
+
+    PLOTMODE emits comma-separated rows with no header. SERIALMONITORMODE emits
+    TAB-separated rows WITH a header and interleaved '#' lines. Both builds ship
+    with either mode selectable, so the dashboard sniffs per line rather than
+    assuming -- assuming PLOTMODE is exactly the bug that made a live cube look
+    like it was sending nothing.
+    """
+    return line.split("\t") if "\t" in line else line.split(",")
 
 
 # ---------------------------------------------------------------------------
@@ -213,30 +263,59 @@ def classify_console(line):
 
 
 # ---------------------------------------------------------------------------
+# KEEPALIVE / HALT -- two grammars live in this tree and they conflict
+#
+#   CornerBalance_WiFi / EdgeBalance_WiFi   h OR k = keepalive,  p<0/1> = halt
+#   corner-bringup/Stage4_AutoTrim* and     k      = keepalive,  h<0/1> = halt
+#   Stage5_AutoTrim*
+#
+# Stage4_AutoTrim_RateFilter_WiFi.ino:81 says it outright: "'h' is still halt
+# (unlike ../CornerBalance_WiFi/, which predates this folder and binds
+# h = keepalive, p = halt)".
+#
+# So a bare 'h' heartbeat is NOT safe: on an AutoTrim build it parses as
+# atof("") = 0 -> h0 -> RESUME, ten times a second, which quietly undoes the
+# HALT button. 'k' is the only letter that is a no-op keepalive on BOTH
+# grammars, so that is what the heartbeat sends. terminal_wifi.py:41 reached
+# the same conclusion.
+#
+# HALT_CMD per schema follows the same split, keyed off field count, which is
+# an exact proxy: 21 columns is the legacy CornerBalance_WiFi build, 26+ is
+# AutoTrim or Stage5.
+# ---------------------------------------------------------------------------
+
+KEEPALIVE = b"k\n"
+
+
+# ---------------------------------------------------------------------------
 # Command whitelist
 #
 # The browser is an untrusted input to a machine that spins three flywheels.
 # Only these exact forms reach the socket; anything else is rejected and
-# logged.
-#
-# 'h' and 'k' are deliberately absent. On the WiFi builds 'h' is the link
-# KEEPALIVE and halt moved to 'p' (CornerBalance_WiFi.ino header, "TWO GRAMMAR
-# CHANGES vs the USB build"). Letting the UI send h1 would be read as a
-# keepalive and silently do nothing -- an operator pressing HALT and watching
-# nothing happen is exactly the failure this excludes. The keepalive itself is
-# generated by the heartbeat thread, never by a client.
+# logged. The keepalive is generated by the heartbeat thread, never a client.
 # ---------------------------------------------------------------------------
 
 _GAIN = r"g(?:0(?:\.\d+)?|1(?:\.0+)?)"          # g0 .. g1, clamped firmware-side anyway
 _LINK = r"[tx][01]"                              # Teensy link mode / XIAO mode
 
 CMD_OK = {
-    "corner": re.compile(r"^(?:a[01]|" + _GAIN + r"|c|z[01]|p[01]|" + _LINK + r")$"),
+    # legacy 21-column corner: halt is p, z tares
+    "legacy": re.compile(r"^(?:a[01]|" + _GAIN + r"|c|z[01]|p[01]|" + _LINK + r")$"),
+    # AutoTrim / Stage5: halt is h, trim replaces the manual z tare, plus the
+    # WiFi-only controls on letters no corner stage uses (l link, d decim) and
+    # the trim knobs (y freeze, n adapt gain, f filter Hz, r log marker).
+    "autotrim": re.compile(
+        r"^(?:a[01]|" + _GAIN + r"|c|h[01]|y[01]|n[\d.eE+-]+|f\d+(?:\.\d+)?"
+        r"|d\d{1,3}|r-?\d+(?:\.\d+)?|l[01]|" + _LINK + r")$"),
     "edge":   re.compile(r"^(?:a[01]|" + _GAIN + r"|o-?\d+(?:\.\d+)?|e|" + _LINK + r")$"),
 }
 
 
 def command_allowed(schema, cmd):
     """True if `cmd` is a command this schema's firmware actually understands."""
-    pattern = CMD_OK.get(schema)
+    spec = SCHEMAS.get(schema)
+    if not spec:
+        return False
+    key = "edge" if spec["family"] == "edge" else spec["grammar"]
+    pattern = CMD_OK.get(key)
     return bool(pattern and pattern.match(cmd))

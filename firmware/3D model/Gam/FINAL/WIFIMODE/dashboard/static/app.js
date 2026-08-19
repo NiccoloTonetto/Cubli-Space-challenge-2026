@@ -16,7 +16,9 @@ const CHART_HZ = 60;        // points/s kept per series; 250-500 Hz would melt C
 const COL = { x: "#22d3ee", y: "#fbbf24", z: "#f472b6", k: "#e2e8f0", d: "#64748b" };
 
 let ws = null;
-let schema = null;          // 'corner' | 'edge'
+let schema = null;          // exact schema, e.g. 'corner_trim_filt'
+let family = null;          // 'corner' | 'edge' -- drives layout and 3D scene
+let haltCmd = null;         // 'p' (legacy) or 'h' (AutoTrim); null = no halt
 let charts = [];            // [{chart, series:[{key,idx}], t0}]
 let lastChartPush = -1e9;
 let cube = null;
@@ -160,7 +162,7 @@ function setTileLabels(which) {
 }
 
 function updateTiles(row) {
-  if (schema === "corner") {
+  if (family === "corner") {
     phiNorm = Math.hypot(row[1], row[2], row[3]);
     $("m-a").innerHTML = trio(row[1], row[2], row[3], 3);
     $("m-b").innerHTML = trio(row[4], row[5], row[6], 1);
@@ -203,19 +205,26 @@ function pill(el, text, tone) {
 }
 
 function applyStatus(st) {
-  if (st.schema && st.schema !== schema) {
-    schema = st.schema;
-    buildCharts(schema);
-    setTileLabels(schema);
+  // Five corner widths (21/26/29/33/36) share one layout, so switch on the
+  // family; the exact schema is shown in the pill for identification only.
+  if (st.family && st.family !== family) {
+    family = st.family;
+    buildCharts(family);
+    setTileLabels(family);
     lastChartPush = -1e9;
-    // The edge build's grammar has no halt and no z-tare; hiding the
-    // difference would just produce buttons that silently do nothing.
-    const isCorner = schema === "corner";
-    $("btn-halt").disabled = !isCorner;
-    $("btn-resume").disabled = !isCorner;
-    $("btn-tare").disabled = !isCorner;
-    $("btn-untare").disabled = !isCorner;
   }
+  schema = st.schema;
+  haltCmd = st.halt_cmd;
+
+  // Buttons that a given build genuinely lacks are disabled rather than left
+  // to silently do nothing. The edge build has no halt; the AutoTrim builds
+  // replaced the manual z-tare with automatic trim.
+  const isCorner = st.family === "corner";
+  $("btn-halt").disabled = !haltCmd;
+  $("btn-resume").disabled = !haltCmd;
+  const hasZTare = isCorner && st.schema === "corner";
+  $("btn-tare").disabled = !hasZTare;
+  $("btn-untare").disabled = !hasZTare;
 
   pill($("pill-link"),
        st.stale ? "○ NO LINK" : `● ${f(st.rate_hz, 0)} Hz`,
@@ -255,7 +264,7 @@ function applyStatus(st) {
     $("pivot-sub").textContent = pivot.gB
       ? `${pivot.kind} · place offset ${f(pivot.place_offset_deg, 3)}°`
       : "unrecognised — no highlight";
-    if (cube) cube.setPivot(pivot, schema);
+    if (cube) cube.setPivot(pivot, family);
   }
 
   $("m-rate").textContent = st.stale ? "—" : f(st.rate_hz, 0) + " Hz";
@@ -353,9 +362,12 @@ function resetArm() {
 }
 
 $("btn-disarm").onclick = () => { cmd("a0"); resetArm(); };
-$("btn-halt").onclick   = () => { cmd("p1"); resetArm(); };
-$("btn-resume").onclick = () => cmd("p0");
-$("btn-resolve").onclick = () => cmd(schema === "edge" ? "e" : "c");
+// Halt is 'p' on the legacy build and 'h' on AutoTrim -- the server tells us
+// which, because sending the wrong letter is silently accepted as something
+// else entirely (a bare h is a keepalive on legacy, h0 is resume on AutoTrim).
+$("btn-halt").onclick   = () => { if (haltCmd) cmd(haltCmd + "1"); resetArm(); };
+$("btn-resume").onclick = () => { if (haltCmd) cmd(haltCmd + "0"); };
+$("btn-resolve").onclick = () => cmd(family === "edge" ? "e" : "c");
 $("btn-tare").onclick   = () => cmd("z1");
 $("btn-untare").onclick = () => cmd("z0");
 

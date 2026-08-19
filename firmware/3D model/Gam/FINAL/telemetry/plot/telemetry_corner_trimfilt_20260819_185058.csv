@@ -1,0 +1,3 @@
+t_ms,phi_x_deg,phi_y_deg,phi_z_deg,om_x_dps,om_y_dps,om_z_dps,rho_x,rho_y,rho_z,rho_x_lp,rho_y_lp,rho_z_lp,tau_x,tau_y,tau_z,tau_cmd_x,tau_cmd_y,tau_cmd_z,armed,gain_scale,trim_x_deg,trim_y_deg,trim_z_deg,trim_com_mm,trim_enabled,om_x_filt_dps,om_y_filt_dps,om_z_filt_dps
+740546.0,32.205,-31.278,-0.008,-0.13,-0.01,0.14,-0.026,0.021,0.027,-0.0,0.0,0.0,0.12,-0.12,0.0758,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0,0.07,0.11,0.18
+740554.0,32.201,-31.274,-0.007,0.04,0.36,-0.18,-0.012,0.021,0.038,-0.0,0.0,0.0,0.12,-0.12,0.0757,0.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.0,1.0,0.03,0.17,0.08

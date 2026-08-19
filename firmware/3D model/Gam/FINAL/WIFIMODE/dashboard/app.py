@@ -201,7 +201,9 @@ def reader_thread(hub):
                 apply_console_updates(hub, updates)
             continue
 
-        parts = line.split(",")
+        # Tab OR comma: SERIALMONITORMODE is tab-delimited with a header row,
+        # PLOTMODE is comma with none. Both are in active use.
+        parts = schemas.split_fields(line)
         schema = schemas.BY_FIELD_COUNT.get(len(parts))
         if schema is None:
             with hub.lock:
@@ -209,15 +211,19 @@ def reader_thread(hub):
                 n = hub.state["bad_shape"]
             if n == 1:
                 hub.push_console(
-                    f"# [dashboard] packet is neither 10- nor 21-field PLOTMODE "
-                    f"CSV ({len(parts)} fields). If it looks tab-delimited or "
-                    f"has a header row, the firmware is in SERIALMONITORMODE.",
+                    f"# [dashboard] unrecognised telemetry width: {len(parts)} "
+                    f"fields. Known widths are "
+                    f"{sorted(schemas.BY_FIELD_COUNT)}. If the firmware gained "
+                    f"columns, add the schema to dashboard/schemas.py (and see "
+                    f"plot_session_csv.py, which tracks the same table).",
                     "warn")
             continue
 
         try:
             vals = [float(p) for p in parts]
         except ValueError:
+            # SERIALMONITORMODE reprints its header row on boot; it has the
+            # right width and non-numeric cells, so it lands here. Not an error.
             continue
 
         now = time.monotonic()
@@ -225,9 +231,13 @@ def reader_thread(hub):
 
         spec = schemas.SCHEMAS[schema]
         armed = bool(int(vals[spec["armed_idx"]]))
-        gain = vals[spec["gain_idx"]]
+        # The Stage5 endurance builds put trip_reason where gain_scale sits on
+        # every other corner build, so they report no gain rather than a trip
+        # code mislabelled as one.
+        gi = spec["gain_idx"]
+        gain = vals[gi] if gi is not None else None
 
-        if schema == "corner":
+        if spec["family"] == "corner":
             phi_norm = (vals[1] ** 2 + vals[2] ** 2 + vals[3] ** 2) ** 0.5
         else:
             phi_norm = abs(vals[1])
@@ -291,14 +301,17 @@ def apply_console_updates(hub, updates):
 def heartbeat_thread(hub):
     """The safety-critical loop. Nothing else runs on this thread.
 
-    A bare 'h' is a documented no-op on both WiFi builds, accepted precisely so
-    a keepalive can run unmodified. It also keeps the XIAO's learned laptop
-    address fresh -- xiao_teensy_bridge.ino only knows where to send telemetry
-    once it has heard from us.
+    Sends 'k', NOT 'h'. 'k' is a no-op keepalive on every build in the tree;
+    'h' is only a keepalive on the legacy CornerBalance_WiFi/EdgeBalance_WiFi
+    pair, and on the AutoTrim builds it is HALT -- a bare 'h' there parses as
+    h0 and resumes from halt ten times a second. See schemas.KEEPALIVE.
+
+    It also keeps the XIAO's learned laptop address fresh -- xiao_teensy_bridge
+    .ino only knows where to send telemetry once it has heard from us.
     """
     while not hub.stop.is_set():
         try:
-            hub.sock.sendto(b"h\n", hub.target)
+            hub.sock.sendto(schemas.KEEPALIVE, hub.target)
         except OSError:
             pass    # a dropped heartbeat is recoverable; a dead thread is not
         hub.stop.wait(HEARTBEAT_INTERVAL_S)
@@ -400,6 +413,12 @@ def build_status(hub):
     return {
         "type": "status",
         "schema": st["schema"],
+        # The five corner widths share one chart layout and one 3D scene, so
+        # the frontend keys off the family and only shows the exact schema.
+        "family": (schemas.SCHEMAS[st["schema"]]["family"]
+                   if st["schema"] else None),
+        "halt_cmd": (schemas.SCHEMAS[st["schema"]]["halt_cmd"]
+                     if st["schema"] else None),
         "schema_locked": st["schema_locked"],
         "armed": st["armed"],
         "halted": st["halted"],
