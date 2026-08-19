@@ -353,13 +353,19 @@ static const CornerCandidate kCorners[8] = {
                   // mode -7.93 s^-1 (126.1 ms), |K1| spread 1.022, discrete
                   // max|z|=0.9813, robust +/-30% worst -1.947, momentum-
                   // limited bound 4.81 deg vs a 5.02 deg torque bound.
-                  // gB below is still the OLD direction (not provided
-                  // alongside Kp/ell) -- low risk given theta_eq only
-                  // moved +0.097 deg, well inside the trim clamp's
-                  // +/-2 deg, not the ~3.7 deg this comment used to warn
-                  // about before the pole's mounting angle (4.49 deg) got
-                  // mistaken for theta_eq.
-    , { -0.571549475f, -0.588645577f, -0.571688354f }
+                  // gB below is now ALSO the confirmed new direction
+                  // (2026-08-19, second update) -- this corner's full set
+                  // (gB/Kp/ell/theta_eq) is complete and matched. The
+                  // other seven corners' gB/ell/Sg/lambda/theta_eq are now
+                  // known too (see Cube-Performance-Envelope-Results.md)
+                  // but their Kp[3][9] are NOT -- do not extend this
+                  // update to them. Per that doc: each corner needs its
+                  // OWN gains, not a preference -- applying THIS corner's
+                  // Kp elsewhere diverges at essentially the open-loop
+                  // rate on six of eight corners, and the antipodal
+                  // corner [+1,+1,+1] becomes a 13s slow fall a <15s test
+                  // would score as a false pass.
+    , { -0.57067251f, -0.59002078f, -0.57114653f }
     , { { -7.0685f, 3.4801f, 3.4675f, -0.8446f, 0.4235f, 0.4244f, -0.000998f, 0.006001f, 0.005931f },  // wheel X
         { 3.5743f, -6.9184f, 3.5758f, 0.4173f, -0.8435f, 0.4177f, 0.004252f, -0.002662f, 0.004252f },  // wheel Y
         { 3.4703f, 3.4844f, -7.0670f, 0.4242f, 0.4237f, -0.8452f, 0.005879f, 0.005948f, -0.001049f } } // wheel Z

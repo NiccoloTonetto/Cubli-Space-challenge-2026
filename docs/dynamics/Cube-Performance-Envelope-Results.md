@@ -563,8 +563,10 @@ recovered pre-hardware design study. This is a re-derivation triggered by
 a real hardware change made during corner bring-up (after
 `hw-run-analysis.md`'s 373.5s run): a new rigid strut connecting corner
 `[-1,-1,-1]` to the electronics housing, added for structural rigidity,
-plus the resulting mass increase. Only this one corner has been
-re-derived so far — see "What's not re-derived yet" below.
+plus the resulting mass increase. Geometry (`gB`/`ell`/`Sg`/`λ`/`θ_eq`)
+and `Kp` robustness diagnostics are now known for all eight corners, but
+the `Kp[3][9]` matrices themselves have only been transcribed into this
+repo for corner `[-1,-1,-1]` — see "What's not re-derived yet" below.
 
 ### Why the strut barely hurts — it's geometric, not incidental
 
@@ -633,18 +635,98 @@ six of eight corners unless the pole is rebalanced or a counterweight
 goes on the opposite side. Worth deciding before it becomes a mission-
 capability assumption baked into later planning.
 
+### Full geometry, all eight corners
+
+`P = I − gB·gBᵀ` is derivable from `gB` at runtime and isn't stored.
+
+| n | corner | ell [mm] | Sg [N·m] | λ [s⁻¹] | θ_eq | gB |
+|---|---|---|---|---|---|---|
+| 1 | `(-1,-1,-1)` | 121.08 | 1.9390 | 8.3688 | 0.894° | `[-0.57067251, -0.59002078, -0.57114653]` |
+| 2 | `(-1,-1,+1)` | 128.12 | 2.0517 | 8.2775 | 3.935° | `[-0.53932892, -0.55761450, +0.63102328]` |
+| 3 | `(-1,+1,-1)` | 125.41 | 2.0084 | 8.3075 | 3.521° | `[-0.55095800, +0.62640728, -0.55141564]` |
+| 4 | `(-1,+1,+1)` | 132.22 | 2.1174 | 8.2344 | 3.820° | `[-0.52259603, +0.59416137, +0.61144555]` |
+| 5 | `(+1,-1,-1)` | 128.18 | 2.0528 | 8.2758 | 3.940° | `[+0.63114032, -0.55732226, -0.53949401]` |
+| 6 | `(+1,-1,+1)` | 134.85 | 2.1595 | 8.1727 | 3.274° | `[+0.59993912, -0.52977034, +0.59951350]` |
+| 7 | `(+1,+1,-1)` | 132.28 | 2.1184 | 8.2379 | 3.811° | `[+0.61157853, +0.59386898, -0.52277274]` |
+| 8 | `(+1,+1,+1)` | 138.75 | 2.2220 | 8.1523 | 0.780° | `[+0.58306253, +0.56617873, +0.58264889]` |
+
+All eight `gB` verified unit-norm on receipt.
+
+### Robustness diagnostics, all eight corners
+
+Each corner's own `Kp` validated identically well — this isn't one good
+gain set and seven unknowns, it's eight matched, individually-verified
+designs:
+
+| n | Ms | slowest mode | discrete max\|z\| | robust worst Re (±30%) |
+|---|---|---|---|---|
+| 1 | 0.999999 | 126.1 ms | 0.9813 | −1.9472 |
+| 2 | 0.999999 | 128.5 ms | 0.9816 | −1.9191 |
+| 3 | 0.999999 | 127.6 ms | 0.9815 | −1.9283 |
+| 4 | 0.999999 | 129.1 ms | 0.9816 | −1.8324 |
+| 5 | 0.999999 | 128.5 ms | 0.9816 | −1.9193 |
+| 6 | 0.999999 | 129.5 ms | 0.9816 | −1.7042 |
+| 7 | 0.999999 | 129.0 ms | 0.9816 | −1.8357 |
+| 8 | 0.999999 | 128.5 ms | 0.9816 | −1.9133 |
+
+Corner 6 is the weakest on robustness margin but still comfortable.
+
+### Three cautions before trusting any of this beyond corner 1
+
+**1. Each corner needs its own gains — a hard requirement, not a
+preference.** Applying corner 1's `Kp` at another corner's `gB`:
+
+| corner | max Re | outcome |
+|---|---|---|
+| `(-1,-1,-1)` (native) | −7.93 | stable |
+| six off-diagonal corners | +7.90 to +8.13 | diverge at essentially the open-loop rate |
+| `(+1,+1,+1)` (antipodal) | +0.075 | slow fall, **13 s** |
+
+The antipodal trap (`P = I − gB·gBᵀ` is invariant under `gB → −gB`, so
+the primary gains *almost* work at the antipodal corner) is still there
+and now **slower than before this update** (+0.075 vs the old plant's
++0.149), which makes it *more* dangerous, not less — a short test is
+more likely to read it as a pass. **Multi-corner tests must run >15 s or
+check eigenvalues directly** (already Part 3's recommendation #8 above)
+— but note the margin on that rule has shrunk from ~8.3 s to ~2 s (13 s
+trap vs. 15 s minimum), so treat 15 s as a floor, not a comfortable
+target, until this is re-verified.
+
+**2. The `|K1|` diagonal spread is worse off-diagonal — real, not an
+error.** Diagonal ends (`[-1,-1,-1]`, `[+1,+1,+1]`): 1.02–1.05. Off-
+diagonal corners: 1.14–1.26. The mass distribution isn't isotropic about
+those corners. The sanity-check threshold used elsewhere ("spread under
+1.3") is close to its limit on corners 4, 6, and 7 — do not tighten that
+threshold based on corner 1 alone looking clean.
+
+**3. Corner identification margin, updated.** Minimum separation is
+now **66.47°**, between corners 6 and 8 (down slightly from the old
+plant's 67.2° — `ID_SEP_MIN` in `cubli_gains.h`, itself still on the old
+plant and due for regeneration alongside the rest of this table). Still
+up to 33.2° of tilt error before misidentification. The primary-diagonal
+antipodal pair (`(-1,-1,-1)`/`(+1,+1,+1)`) sits at 178.3°, not a clean
+180° — the asymmetric COM offset breaks the symmetry slightly, which is
+exactly what turns the antipodal case into a slow fall (caution 1) rather
+than a neutral, undamped one.
+
 ### What's not re-derived yet
 
-Only corner `[-1,-1,-1]`'s `Kp`/`ell`/`Sg`/`λ`/`θ_eq` have been
-re-derived and (partially — `Kp`/`ell`/`θ_eq` only, not `gB`) carried
-into firmware (`corner-bringup/Stage4_AutoTrim*`, `Stage5_AutoTrim*` —
-see the `TODO: MIXED-GENERATION PLANT` comments above each file's
-`kCorners` table). `gB` (the 3-vector corner-resolution direction),
-plus the full `gB`/`Kp`/`ell` for the other seven corners, still need
-deriving before this table's margin figures can be treated as more than
-a planning input — the recovery/margin numbers above come from the
-source analysis, not a re-run against firmware-exact gains for corners
-2–8.
+**Corner 1 is complete and applied**: `gB`/`Kp`/`ell`/`θ_eq` all match
+and are in firmware (`corner-bringup/Stage4_AutoTrim*`,
+`Stage5_AutoTrim*` — see the `TODO: MIXED-GENERATION PLANT` comment
+above each file's `kCorners` table).
+
+**Corners 2–8 are geometry-complete but Kp-incomplete.** The table above
+gives `gB`/`ell`/`Sg`/`λ`/`θ_eq` for all eight, and the robustness table
+gives diagnostics for all eight `Kp` designs — but the actual `Kp[3][9]`
+numeric matrices for corners 2–8 have not been transcribed into this
+repo (neither this document nor `cubli_gains.h`, which is still the
+2026-08-14 / 1.5668 kg export). Per caution 1 above, do **not** populate
+those seven corners' `gB` in firmware without their matching `Kp` —
+a correctly-identified corner running the wrong corner's gains is worse
+than an unresolved one. Get the actual seven remaining `Kp` matrices
+(or a fresh `cubli_export_gains.m` run covering all eight) before
+touching corners 2–8 in any `.ino` file.
 
 ---
 
