@@ -30,6 +30,14 @@
 // 15-state augmented model) -- see Stage4_AutoTrim_RateFilter.ino for the
 // derivation. Still live-settable with "k<value>".
 //
+// CORRECTION 2026-08-19: Stage4_AutoTrim_RateFilter.ino's header originally
+// overstated the filter's effect at 35 Hz ("20-30 dB" -- wrong, a first-
+// order filter can't do that without also killing the 1.3 Hz phase
+// margin this design deliberately protects). Measured on hardware: ~6 dB
+// at the real ~30 Hz mode. See that file's corrected header and
+// docs/testing/Corner-RateFilter-and-Edge-Hardware-Tests-2026-08-19.md
+// Section 2 before assuming this filter has more headroom than it does.
+//
 // UPDATE 2026-08-19: corner [-1,-1,-1]'s Kp/ell/theta_eq below are now the
 // re-derived values for the new plant (mass 1.633 kg + strut) -- user-
 // supplied. The other seven corners are still the OLD (1.5668 kg, no
