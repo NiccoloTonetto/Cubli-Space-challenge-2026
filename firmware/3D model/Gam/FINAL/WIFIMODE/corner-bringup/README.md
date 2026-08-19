@@ -20,6 +20,7 @@ The control law in every file here is a verbatim copy of its USB source. **Retun
 | 2 | [`Stage2_RateOnly_WiFi/`](Stage2_RateOnly_WiFi/) | 18 | om block only (phi, rho masked) |
 | 3 | [`Stage3_PositionDamping_WiFi/`](Stage3_PositionDamping_WiFi/) | 18 | phi + om (rho masked), hand-ramped gain |
 | 4 | [`../CornerBalance_WiFi/`](../CornerBalance_WiFi/) | 21 | full 9-state law + friction feedforward |
+| 4-AT | [`Stage4_AutoTrim_WiFi/`](Stage4_AutoTrim_WiFi/) | 26 | same law, manual `z1` tare replaced by **automatic trim** |
 | 5 | [`Stage5_Release_WiFi/`](Stage5_Release_WiFi/) | 21 | full law, **real** trip policy, latched reason |
 
 **Stage 4 is not in this folder and is not duplicated.** `../CornerBalance_WiFi/` already was the WiFi Stage 4 — it is the validated build with recorded sessions, and it is left exactly as it was. It is also the only stage with two ways to read it:
@@ -29,25 +30,30 @@ The control law in every file here is a verbatim copy of its USB source. **Retun
 
 Stage 5's 21 fields end in `trip_reason`, not `gain_scale` — the one layout difference from Stage 4.
 
+Stage 4-AT is Stage 4's law with the manual snapshot tare swapped for the closed-loop adaptive trim from *Automatic Trim — Replacing the Hardcoded IMU Offset.md*. Its 26 fields are Stage 4's 21 plus `trim_x_deg trim_y_deg trim_z_deg trim_com_mm trim_enabled`. Watching trim converge takes minutes, so `d20` (25 Hz) is the rate to read it at.
+
 ---
 
 ## Command grammar
 
-Every stage keeps its USB command letters **byte-identical**. That was the point: the terminal should behave like the Serial Monitor, including what you type into it.
+Every stage keeps its USB command letters **byte-identical** — with two exceptions in Stage 4-AT that the transport forced, called out below. That was the point: the terminal should behave like the Serial Monitor, including what you type into it.
 
-| | Stage 1 | Stage 2 | Stage 3 | Stage 5 |
-|---|---|---|---|---|
-| arm / disarm | — | `a<0/1>` | `a<0/1>` | `a<0/1>` (gated, clears trip latch) |
-| gain scale | — | — | `g<0..1>` | — |
-| tilt limit | — | — | `m<deg>` | — |
-| select wheel | `w<0/1/2>` | — | — | — |
-| fire pulse | `p` | — | — | — |
-| pulse size | `t<Nm>` | — | — | — |
-| log marker | — | — | — | `r<val>` |
-| re-resolve corner | `c` | `c` | `c` | `c` |
-| halt | `h<0/1>` | `h<0/1>` | `h<0/1>` | `h<0/1>` |
+| | Stage 1 | Stage 2 | Stage 3 | Stage 4-AT | Stage 5 |
+|---|---|---|---|---|---|
+| arm / disarm | — | `a<0/1>` | `a<0/1>` | `a<0/1>` (gated) | `a<0/1>` (gated, clears trip latch) |
+| gain scale | — | — | `g<0..1>` | `g<0..1>` | — |
+| tilt limit | — | — | `m<deg>` | — | — |
+| select wheel | `w<0/1/2>` | — | — | — | — |
+| fire pulse | `p` | — | — | — | — |
+| pulse size | `t<Nm>` | — | — | — | — |
+| log marker | — | — | — | — | `r<val>` |
+| seed / clear trim | — | — | — | `z<0/1>` | — |
+| freeze / resume adapt | — | — | — | `y<0/1>` *(USB: `x`)* | — |
+| adaptation gain | — | — | — | `n<value>` *(USB: `k`)* | — |
+| re-resolve corner | `c` | `c` | `c` | `c` | `c` |
+| halt | `h<0/1>` | `h<0/1>` | `h<0/1>` | `h<0/1>` | `h<0/1>` |
 
-The WiFi layer therefore could not use `h`, `p` or `t`. Across all five stages the letters `a c g h m p r t w z` are taken, so the link controls sit on free ones:
+The WiFi layer therefore could not use `h`, `p` or `t`. Across all the stages the letters `a c g h m n p r t w y z` are taken, so the link controls sit on free ones:
 
 | | |
 |---|---|
@@ -55,6 +61,13 @@ The WiFi layer therefore could not use `h`, `p` or `t`. Across all five stages t
 | `l<0/1>` | link mode: `l0` telemetry on USB, `l1` telemetry on Serial1 (boot default) |
 | `d<N>` | telemetry decimation, 1..100. `d2` = 250 Hz (default), `d20` = 25 Hz readable |
 | `x<0/1>` | the XIAO's own mode — consumed by the bridge, **never reaches the Teensy** |
+
+### Stage 4-AT's two remapped letters
+
+The USB `Stage4_AutoTrim` binds `x<0/1>` to the trim freeze and `k<value>` to the adaptation gain. Neither survives the link:
+
+- **`x` never reaches the Teensy** — the bridge consumes it (`x0` = WIFI_TEST, `x1` = TEENSY_BRIDGE). A freeze on `x` would work over USB and be silently dead over WiFi. It is **`y<0/1>`** here, same polarity.
+- **`k` is the keepalive** — `terminal_wifi.py` sends a bare `k` every 100 ms, which would parse as `atof("") = 0.0` and zero the adaptation gain ten times a second. Trim would sit frozen at zero and *look* like a converged trim of zero in the telemetry. It is **`n<value>`** here.
 
 ### The one legacy difference
 
@@ -92,6 +105,7 @@ Kill `terminal_wifi.py` while armed and confirm the board disarms within 300 ms.
 |---|---|
 | Stage 1 | cancels an in-flight pulse (there is no `gArmed`) |
 | Stages 2, 3 | `gArmed = false` |
+| Stage 4-AT | `gArmed = false`, which also freezes trim adaptation — `updateTrim()` is gated on `gArmed`, so "do not learn from a dropped link" costs no extra state. The converged value is **kept**, not cleared |
 | Stage 5 | `gArmed = false`, and `trip_reason` is deliberately **left alone** — losing the radio is not something the cube did, and overwriting a latched tilt/omega/nan would destroy the evidence you need before re-arming |
 
 ---
@@ -100,7 +114,7 @@ Kill `terminal_wifi.py` while armed and confirm the board disarms within 300 ms.
 
 `terminal_wifi.py` tees everything received to `session_<tag>_<stamp>.log` in [`../../telemetry/serial/`](../../telemetry/README.md) (`--no-log` to skip) — the SERIALMONITORMODE half of the recordings folder, kept apart from the live plotters' PLOTMODE csv in `telemetry/plot/`. Because the header row is in the stream, [`../../plot_session_csv.py`](../../plot_session_csv.py) opens a **Stage 5** log directly — 21 columns, though it will label the last one `gain_scale` when it is really `trip_reason`. Run it with no arguments and press `f` to pick the log from a list.
 
-Stage 1's 13 and Stages 2/3's 18 columns fall outside that script's 10/21 auto-detection. Those logs are raw records to read or post-process, which is what the bring-up stages want anyway.
+Stage 1's 13, Stages 2/3's 18 and Stage 4-AT's 26 columns fall outside that script's 10/21 auto-detection. Those logs are raw records to read or post-process, which is what the bring-up stages want anyway.
 
 ---
 

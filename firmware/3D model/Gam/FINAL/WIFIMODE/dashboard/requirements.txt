@@ -1,0 +1,8 @@
+# Cubli dashboard -- backend only. The frontend libraries are vendored into
+# static/vendor/ so the UI works with no internet (the bench runs off a phone
+# hotspot and a dropped cellular link must not blank the instrument).
+#
+# No pyserial: this tool speaks UDP to the XIAO bridge, same as the
+# telemetry_python_wifi*.py scripts it sits beside.
+fastapi>=0.110
+uvicorn[standard]>=0.27
