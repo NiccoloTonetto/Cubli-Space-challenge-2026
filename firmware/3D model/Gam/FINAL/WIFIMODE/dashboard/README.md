@@ -24,9 +24,22 @@ matching `XIAO_IP` in `xiao_teensy_bridge.ino`.
 ## Desk test, no hardware
 
 ```
-python app.py --target 127.0.0.1     # terminal 1
-python replay.py                     # terminal 2
+python app.py --target 127.0.0.1 --target-port 4211    # terminal 1
+python replay.py                                       # terminal 2
 ```
+
+`--target-port 4211` is required on loopback. The server listens on 4210, so
+telling it to send commands to 127.0.0.1:**4210** would point it at its own
+bound port: it would talk to itself, `replay.py` would never hear a command,
+and every button would look dead. `replay.py` therefore listens on 4211. On
+real hardware the XIAO is a different host, the collision cannot arise, and
+both sides use 4210 — so the bench command has no `--target-port`.
+
+Two things that look wrong in desk mode but are not: the **ARMED pill stays
+DISARMED** no matter what you press, because it is driven by the `armed`
+telemetry column (authoritative — it catches a self-disarm on a trip) and that
+recording has `armed = 0` throughout; and **ARM stays greyed out**, because
+the run starts at |φ| ≈ 55°, far outside the gate.
 
 `replay.py` re-emits the newest `telemetry_corner_*.csv` from `../../telemetry/plot/`
 at its recorded timing and injects the firmware's `#` console lines, so the
@@ -44,6 +57,12 @@ schema switch. `--speed 4` scrubs faster; `--once` stops instead of looping.
 | RE-RESOLVE | `c` / `e` | the only way to learn which corner/edge is active |
 | TARE φ / CLEAR φ | `z1` / `z0` | corner only; the edge build uses `o<deg>` instead |
 | Gain | `g<0..1>` | debounced slider |
+
+Every accepted command is echoed into the console pane as `> a0` in cyan the
+moment it goes on the wire, with the firmware's own `#` reply following in
+grey. That matters because some commands never reply — the edge build gates
+most echoes behind `SERIALMONITORMODE` — so without the outbound echo a
+working press and a dropped UDP packet look identical.
 
 There is **no** `RUN_EDGE_CODE` / `RUN_CORNER_CODE`. Edge vs corner is decided
 by which sketch is flashed. The AUTO/EDGE/CORNER buttons only tell the

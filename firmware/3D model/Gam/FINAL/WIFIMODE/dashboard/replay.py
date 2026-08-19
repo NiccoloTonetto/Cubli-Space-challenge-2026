@@ -36,7 +36,17 @@ from pathlib import Path
 # parents[] here counts from the FILE, so parents[2] == FINAL/
 # (dashboard -> WIFIMODE -> FINAL).
 OUT_DIR = Path(__file__).resolve().parents[2] / "telemetry" / "plot"
-DEST = ("127.0.0.1", 4210)
+DEST = ("127.0.0.1", 4210)          # where app.py listens
+
+# Our own port has to be FIXED and DIFFERENT from app.py's, because on
+# loopback the server would otherwise be told to send commands to 127.0.0.1:4210
+# -- which is the port it is itself bound to. It would talk to itself, this
+# script would never hear a command, and every button in the UI would look
+# dead. So: replay listens on 4211, and app.py is started with
+#     --target 127.0.0.1 --target-port 4211
+# On real hardware the XIAO is a different host, so the collision cannot arise
+# and both sides use 4210.
+LISTEN_PORT = 4211
 
 # Console lines lifted from the real print sequences, so the parsers in
 # schemas.py are tested against the exact text the firmware emits.
@@ -182,15 +192,18 @@ def main():
     ap.add_argument("--schema", choices=("corner", "edge"), default="corner")
     ap.add_argument("--speed", type=float, default=1.0)
     ap.add_argument("--once", action="store_true", help="do not loop")
+    ap.add_argument("--listen-port", type=int, default=LISTEN_PORT,
+                    help="port this script receives commands on; must match "
+                         f"app.py's --target-port (default {LISTEN_PORT})")
     args = ap.parse_args()
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # Bind an ephemeral port; the dashboard learns our address from the first
-    # packet and sends commands back to it, same as the XIAO does.
-    sock.bind(("127.0.0.1", 0))
+    sock.bind(("127.0.0.1", args.listen_port))
     sock.settimeout(0.5)
-    print(f"Sending to {DEST[0]}:{DEST[1]} from :{sock.getsockname()[1]}")
+    print(f"Telemetry -> {DEST[0]}:{DEST[1]}   commands <- :{args.listen_port}")
+    print(f"Start the server with:  python app.py --target 127.0.0.1 "
+          f"--target-port {args.listen_port}")
 
     stop = threading.Event()
     threading.Thread(target=ack_thread, args=(sock, stop), daemon=True).start()

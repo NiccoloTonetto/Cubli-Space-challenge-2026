@@ -78,8 +78,15 @@ class Hub:
     by `lock` because it is read and written as a group.
     """
 
-    def __init__(self, target_ip, target_port):
+    def __init__(self, target_ip, target_port, read_only=False):
         self.target = (target_ip, target_port)
+        # Monitor mode: refuse a1 outright. That single command is exactly
+        # sufficient, because gArmed gates the control output -- disarmed, the
+        # law commands no torque no matter what else is sent. Everything else
+        # is either observational (c/e re-resolve, which only reads the IMU and
+        # prints) or safety-increasing (a0, p1), so blocking more would just
+        # take away the controls you want during a watch-only run.
+        self.read_only = read_only
         self.sock = None
         self.stop = threading.Event()
         self.lock = threading.Lock()
@@ -408,6 +415,7 @@ def build_status(hub):
         "stale": age is None or age > STALE_AFTER_S,
         "recording": hub.rec_path.name if hub.rec_path else None,
         "recorded_rows": hub.rec_rows,
+        "read_only": hub.read_only,
     }
 
 
@@ -528,6 +536,11 @@ async def handle_client_message(hub, msg):
                              "build is unknown. Wait for telemetry.", "warn")
             return
 
+        if hub.read_only and cmd == "a1":
+            hub.push_console("# [dashboard] BLOCKED a1: started with "
+                             "--read-only (monitor mode).", "warn")
+            return
+
         if not schemas.command_allowed(schema, cmd):
             # Not shell-escaping paranoia -- this is the only thing standing
             # between a browser tab and three flywheels.
@@ -545,7 +558,12 @@ async def handle_client_message(hub, msg):
                 f"{gate:.2f} deg arm gate.", "warn")
             return
 
-        hub.send(cmd)
+        # Echo what we put on the wire. Without this a button press is
+        # invisible until the firmware answers -- and some commands never
+        # answer (the edge build gates most echoes behind SERIALMONITORMODE),
+        # so a working press and a dropped UDP packet look identical.
+        if hub.send(cmd):
+            hub.push_console(f"> {cmd}", "tx")
 
     elif kind == "record":
         action = msg.get("action")
@@ -592,10 +610,14 @@ def main():
                     help="web bind address -- keep it loopback unless you "
                          "really want the hotspot to reach the arm button")
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--read-only", action="store_true",
+                    help="monitor mode: refuse a1 (arm). Telemetry, charts, "
+                         "recording, re-resolve, disarm and halt all still work")
     args = ap.parse_args()
 
-    HUB = Hub(args.target, args.target_port)
-    print("Cubli dashboard")
+    HUB = Hub(args.target, args.target_port, read_only=args.read_only)
+    print("Cubli dashboard" + ("  [READ-ONLY: arming blocked]"
+                               if args.read_only else ""))
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 

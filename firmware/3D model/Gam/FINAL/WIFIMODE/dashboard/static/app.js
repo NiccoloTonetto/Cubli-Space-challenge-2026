@@ -263,10 +263,12 @@ function applyStatus(st) {
   $("m-pkts").textContent = st.packets;
   $("m-gain").textContent = f(st.gain, 2);
 
-  const canArm = !st.armed && !st.stale && phiNorm !== null && phiNorm < armGate;
+  const canArm = !st.read_only && !st.armed && !st.stale &&
+                 phiNorm !== null && phiNorm < armGate;
   $("btn-arm").disabled = !canArm && !armPending;
   if (!armPending) {
-    $("arm-hint").textContent = st.armed ? "armed — DISARM is in the header"
+    $("arm-hint").textContent = st.read_only ? "monitor mode — arming blocked (--read-only)"
+      : st.armed ? "armed — DISARM is in the header"
       : st.stale ? "no link"
       : phiNorm === null ? "waiting for telemetry"
       : canArm ? `|φ| ${f(phiNorm, 3)} < ${f(armGate, 2)} deg — ready`
@@ -282,7 +284,9 @@ function pushConsole(line, level) {
   const el = $("console");
   if (el.dataset.virgin !== "1") { el.innerHTML = ""; el.dataset.virgin = "1"; }
   const div = document.createElement("div");
-  div.className = level === "warn" ? "text-amber-300" : "text-slate-400";
+  div.className = level === "warn" ? "text-amber-300"
+                : level === "tx" ? "text-cyan-300 font-bold"   // what we sent
+                : "text-slate-400";
   div.textContent = line;
   el.appendChild(div);
   while (el.childElementCount > 400) el.removeChild(el.firstChild);
