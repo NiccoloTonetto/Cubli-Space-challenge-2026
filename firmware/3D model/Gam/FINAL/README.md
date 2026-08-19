@@ -143,9 +143,11 @@ lines and says so.
 ## After a run: `plot_session_csv.py`
 
 Both live scripts save a timestamped CSV when you close the plot window, into
-[`telemetry/plot/`](telemetry/README.md); `terminal_wifi.py`'s session logs go
-to `telemetry/serial/`. See [`telemetry/README.md`](telemetry/README.md) for
-what separates the two.
+[`telemetry/plot/`](telemetry/README.md) — `telemetry_edge_<stamp>.csv` from
+the edge plotter, `telemetry_corner_<stamp>.csv` from the corner one, so the
+name says which build produced a run. `terminal_wifi.py`'s session logs go to
+`telemetry/serial/`. See [`telemetry/README.md`](telemetry/README.md) for what
+separates the two.
 
 ```bash
 # no arguments — asks which file:

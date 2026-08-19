@@ -5,10 +5,15 @@ different tools, so they are not kept in one heap.
 
 ```
 telemetry/
-├── plot/     telemetry_<stamp>.csv         PLOTMODE — comma-delimited
+├── plot/     telemetry_edge_<stamp>.csv    PLOTMODE — comma-delimited
 │             telemetry_corner_<stamp>.csv
 └── serial/   session_<tag>_<stamp>.log     SERIALMONITORMODE — tab-delimited
 ```
+
+`plot/` holds both builds' recordings, so the name says which one wrote it:
+`_edge_` is 10 columns, `_corner_` is 21. The plotter does not rely on that —
+it detects the format from the column count — but a directory listing should
+answer "which run is this?" without opening the file.
 
 | | `plot/` | `serial/` |
 |---|---|---|
@@ -33,8 +38,10 @@ python plot_session_csv.py     # press d for the newest, f to pick from a list
 ```
 
 `d` takes the most recent recording of either mode — after a session, the one
-you just made. `f` lists both folders separately and accepts a list number, a
-filename, or just the timestamp: `014914` is enough to name a file.
+you just made. `f` lists both folders separately, tags each line `EDGE` /
+`CORNER` / `-` (not plottable) from the file's own first data row, and accepts
+a list number, a filename, or just the timestamp: `014914` is enough to name
+a file.
 
 A filename works as an argument too, from anywhere in the tree:
 

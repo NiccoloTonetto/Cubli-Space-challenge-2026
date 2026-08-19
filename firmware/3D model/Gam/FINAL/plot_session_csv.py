@@ -30,14 +30,18 @@ USAGE
 
   Recordings live in FINAL/telemetry/, split by the mode that wrote them:
 
-      telemetry/plot/     telemetry_*.csv  -- PLOTMODE, comma-delimited, from
-                          telemetry_python_wifi.py / _corner.py
+      telemetry/plot/     telemetry_edge_*.csv    -- PLOTMODE, comma-delimited,
+                          telemetry_corner_*.csv     from telemetry_python_wifi.py
+                                                     and _corner.py respectively
       telemetry/serial/   session_*.log    -- SERIALMONITORMODE, tab-delimited,
                           from terminal_wifi.py
 
   The picker lists the two apart and labels which is which, since only a
   Stage 5 serial log is wide enough to plot (21 columns); Stage 1's 13 and
-  Stages 2/3's 18 are outside the auto-detection below. Anything left
+  Stages 2/3's 18 are outside the auto-detection below. Every line also
+  carries EDGE or CORNER -- read from the file's first data row, not from
+  its name, so a renamed or pre-_edge_ capture still says what it holds --
+  and a '-' where the width is one this script cannot plot. Anything left
   elsewhere under FINAL/ is still found and still openable by name.
 
   Interactive -- no idea yet what you want to see:
@@ -311,6 +315,42 @@ def capture_mode(path):
     return "SERIAL" if path.suffix.lower() == ".log" else "PLOT"
 
 
+_FORMAT_CACHE = {}
+
+
+def capture_format(path):
+    """EDGE, CORNER, or '' -- which wire format this capture holds.
+
+    Read from the file's own first data row rather than from its name: both
+    live plotters write into telemetry/plot/, the two formats are not
+    interchangeable, and a capture recorded before the _edge_/_corner_ naming
+    -- or renamed by hand, or copied in from another machine -- still has to
+    answer correctly. '' means a width this script cannot plot at all, which
+    is the Stage 1 (13) and Stage 2/3 (18) serial logs.
+
+    Only the first data line is read, and the answer is cached, so listing a
+    folder stays cheap next to the 24 MB a long corner run produces."""
+    key = str(path)
+    if key not in _FORMAT_CACHE:
+        width = 0
+        try:
+            with path.open(newline="") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    # Both delimiters tried rather than sniffed: one line is
+                    # not enough of a sample to vote on, and the wrong guess
+                    # gives a width of 1, which matches no format anyway.
+                    width = max(len(line.split(",")), len(line.split("\t")))
+                    break
+        except OSError:
+            pass
+        _FORMAT_CACHE[key] = {len(EDGE_COLS): "EDGE",
+                              len(CORNER_COLS): "CORNER"}.get(width, "")
+    return _FORMAT_CACHE[key]
+
+
 def find_captures(root=CAPTURE_ROOT):
     """Every capture at or below `root`, newest first.
 
@@ -323,11 +363,15 @@ def find_captures(root=CAPTURE_ROOT):
 
 
 def describe(path, with_mode=True):
-    """One line per file for the picker: which mode, where, when, how big.
+    """One line per file for the picker: which mode, which format, where, when,
+    how big.
 
     `with_mode=False` under the grouped listing, whose section headings already
     say it -- but on its own, as the default line or an ambiguity list, the mode
-    is the first thing worth knowing about a file."""
+    is the first thing worth knowing about a file. The FORMAT is shown either
+    way: the section heading cannot give it, since telemetry/plot/ holds edge
+    and corner recordings side by side, and it is what decides whether the file
+    opens at all."""
     try:
         rel = path.relative_to(CAPTURE_ROOT)
     except ValueError:
@@ -335,7 +379,8 @@ def describe(path, with_mode=True):
     stat = path.stat()
     when = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
     mode = f"{capture_mode(path):<6} " if with_mode else ""
-    return f"{mode}{str(rel):<50} {when}  {stat.st_size / 1e6:6.2f} MB"
+    fmt = f"{capture_format(path) or '-':<6} "
+    return f"{mode}{fmt}{str(rel):<50} {when}  {stat.st_size / 1e6:6.2f} MB"
 
 
 def resolve_typed_name(text, candidates, numbered=None):
@@ -435,6 +480,8 @@ def pick_csv():
         if choice in ("f", "file"):
             if captures:
                 print(f"\n  Recordings under {CAPTURE_ROOT}:")
+                print("      (format column: EDGE = 10 col, CORNER = 21 col, "
+                      "- = not plottable)")
                 shown = 0
                 for label, total in (("PLOT   -- live plotters, comma csv", n_plot),
                                      ("SERIAL -- terminal_wifi.py, tab log", n_serial)):

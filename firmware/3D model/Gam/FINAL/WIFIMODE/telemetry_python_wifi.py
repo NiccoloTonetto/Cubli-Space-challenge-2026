@@ -24,8 +24,10 @@ The USB-side tooling (telemetry_python.py, telemetry_matlab.m) and the
 USB firmware in ../USBMODE/ are untouched and still work exactly as
 before -- this is a separate script for the separate WiFi build.
 
-The session lands in ../telemetry/plot/, alongside the corner plotter's
-recordings; terminal_wifi.py's SERIALMONITORMODE logs are kept apart in
+The session lands in ../telemetry/plot/ as telemetry_edge_<stamp>.csv,
+alongside the corner plotter's telemetry_corner_<stamp>.csv; both formats
+are named so a directory listing says which build produced a run without
+opening it. terminal_wifi.py's SERIALMONITORMODE logs are kept apart in
 ../telemetry/serial/. Afterwards run ../plot_session_csv.py with no
 arguments and press d -- its default is the newest recording.
 
@@ -62,7 +64,7 @@ Usage:
     4. In the terminal (not the plot window), type commands like a1, g0.5,
        o-2.3, t0, x1 and press Enter to send them.
     5. Close the window when you're done -- the full session is saved to
-       ../telemetry/plot/telemetry_<stamp>.csv.
+       ../telemetry/plot/telemetry_edge_<stamp>.csv.
 """
 
 import csv
@@ -320,7 +322,10 @@ def main():
     if rows:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         OUT_DIR.mkdir(parents=True, exist_ok=True)
-        out_file = OUT_DIR / f"telemetry_{stamp}.csv"
+        # _edge_, matching the corner plotter's _corner_: both builds write into
+        # the same telemetry/plot/ folder, and the two are different wire
+        # formats (10 vs 21 columns), so the name has to say which one this is.
+        out_file = OUT_DIR / f"telemetry_edge_{stamp}.csv"
         with out_file.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(COL_NAMES)
