@@ -57,10 +57,12 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_session_csv import (  # noqa: E402
-    load_rows, CORNER_COLS, CORNER_TRIM_COLS, CORNER_ENDURANCE_COLS,
+    load_rows, CORNER_COLS, CORNER_TRIM_COLS, CORNER_TRIM_FILT_COLS,
+    CORNER_ENDURANCE_COLS, CORNER_ENDURANCE_FILT_COLS,
 )
 
-CORNER_WIDTHS = (len(CORNER_COLS), len(CORNER_TRIM_COLS), len(CORNER_ENDURANCE_COLS))
+CORNER_WIDTHS = (len(CORNER_COLS), len(CORNER_TRIM_COLS), len(CORNER_TRIM_FILT_COLS),
+                 len(CORNER_ENDURANCE_COLS), len(CORNER_ENDURANCE_FILT_COLS))
 
 # Corner [-1,-1,-1]'s measured values (Test Plan S4 / "Automatic Trim" S3).
 DEFAULT_K1  = 3.6084

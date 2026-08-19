@@ -1,22 +1,61 @@
 // ============================================================================
 // TEENSY 4.1 + moteus-n1 x3 (CAN3, ids 1/2/3) + BMI270 IMU (SPI) —
-// CORNER STAGE 5: RELEASE + AUTOMATIC TRIM + FINE-TUNING INSTRUMENTATION
+// CORNER STAGE 5: RELEASE + AUTO TRIM + RATE LOW-PASS FILTER + FINE-TUNING
 // ============================================================================
-// Copy of Stage5_Release.ino carrying the same three additions
-// Stage4_AutoTrim.ino made to Stage4_FullLaw.ino, PLUS what Cube
-// Fine-Tuning -- Test Plan.md's Session 2/3 (Tests 5, 6, 7) need that
-// Stage 4 didn't: a live-settable wheel-speed cap and endurance-run
-// instrumentation. If this is the first AutoTrim variant you're looking
-// at, read Stage4_AutoTrim.ino's header first -- the trim mechanism itself
-// isn't re-explained in full here.
+// Copy of Stage5_AutoTrim.ino with the SAME ONE mechanism
+// Stage4_AutoTrim_RateFilter.ino added to Stage4_AutoTrim.ino: a first-order
+// low-pass on the body-rate signal feeding the control law's om block, per
+// hw-run-analysis.md's fix 4.1. Read Stage4_AutoTrim_RateFilter.ino's header
+// first for the full rate-filter derivation (the 35 Hz structural-mode
+// finding, why only the om-block-into-K2 path is filtered, why the trim
+// quiescence gate also switches to the filtered signal) -- this header only
+// covers what's different about applying it at Stage 5.
+//
+// ---------------------------- WHAT AND WHY (condensed) ---------------------
+// hw-run-analysis.md's 373.5 s continuous run found torque saturating 71.8%
+// of the time, driven by a ~35 Hz structural mode riding on the gyro signal
+// that a 1.3 Hz-bandwidth controller can only feed, never damp. The fix:
+// low-pass the rate signal (15-25 Hz corner, 20 Hz default) BEFORE it
+// multiplies the K2 gain columns in commandWheels() -- a separate w_filt[3],
+// leaving raw w_b[3] driving ghat propagation and every trip/safety check
+// (arm gate, tilt/omega/NaN trips below) unfiltered and un-delayed. THIS
+// MATTERS MORE AT STAGE 5 THAN STAGE 4: the trip checks are the real
+// DISARM/OMEGA_CAP policy here, not loose bench values, so w_filt is kept
+// out of them just as deliberately as at Stage 4 -- filtering a safety
+// check would add exactly the lag you don't want on a signal whose whole
+// job is catching a fall fast.
+//
+// gKAdapt's default is likewise raised from tau_a=60s (2.922e-6) to 1e-4,
+// per hw-run-analysis.md 4.5's stability limit (k_a < 0.00214 on the
+// 15-state augmented model) -- see Stage4_AutoTrim_RateFilter.ino for the
+// derivation. Still live-settable with "k<value>".
+//
+// UPDATE 2026-08-19: corner [-1,-1,-1]'s Kp/ell/theta_eq below are now the
+// re-derived values for the new plant (mass 1.633 kg + strut) -- user-
+// supplied. The other seven corners are still the OLD (1.5668 kg, no
+// strut) table -- this is a mixed-generation table, not internally
+// consistent corner-to-corner -- see the TODO at the table. Multi-corner
+// finding (see that entry's own comment / Cube-Performance-Envelope-
+// Results.md): this pole leaves only [-1,-1,-1] and [+1,+1,+1] with
+// positive recovery margin -- corner balancing is unaffected, multi-
+// corner locomotion is not, until it's rebalanced or counterweighted.
 //
 // PHYSICAL STOP/CATCH IN PLACE. E-STOP IN HAND. This is the stage where the
 // cube is NOT held by hand. The control law is identical to Stage 4 (this
-// one, with trim); nothing new about the law itself, only about the full
-// closed loop running unsupported, on a corner, for real.
+// one, with trim and the rate filter); nothing new about the law itself,
+// only about the full closed loop running unsupported, on a corner, for
+// real.
 //
 // ---------------------------- WHAT'S NEW HERE ---------------------------
-// vs Stage5_Release.ino:
+// vs Stage5_AutoTrim.ino:
+//   - w_filt[3] (SECTION 2b-2) replaces w_b in commandWheels()'s xVec om
+//     block AND in updateTrim()'s quiescence gate. gKAdapt default raised
+//     to 1e-4. "f<Hz>" sweeps the filter corner live (15-25 Hz per the
+//     source note). See the condensed note above / Stage4_AutoTrim_
+//     RateFilter.ino for the full reasoning.
+//
+// vs Stage5_Release.ino (unchanged from Stage5_AutoTrim.ino, repeated here
+// for anyone jumping straight to this file):
 //   - Automatic trim (gTrim), replacing nothing -- Stage5_Release never had
 //     a manual offset to replace (edge-bringup's kPhiOffset/corner's old
 //     Stage4 gPhiOffset were never ported to Stage 5). This is trim's
@@ -250,6 +289,28 @@ void attitudeUpdate(const float a_imu[3], const float w_imu[3], float dt) {
 
 
 // ----------------------------------------------------------------------------
+// SECTION 2b-2: RATE LOW-PASS FILTER -- hw-run-analysis.md fix 4.1
+// ----------------------------------------------------------------------------
+// w_b (above) stays raw -- this is a SEPARATE signal, used only in
+// commandWheels()'s om block and updateTrim()'s quiescence gate. See the
+// header note and Stage4_AutoTrim_RateFilter.ino for the full reasoning on
+// why only those two use points are filtered, and why every trip/safety
+// check below still reads raw w_b.
+
+// 15-25 Hz per the source note; 20 Hz is the value its own phase-lag
+// number (3.7 deg at 1.3 Hz) was computed for. Live-settable with "f<Hz>"
+// to sweep the range on the bench without reflashing.
+static float gRateFilterHz = 20.0f;
+float w_filt[3] = { 0.0f, 0.0f, 0.0f };
+
+void updateRateFilter(float dt) {
+  const float tau = 1.0f / (2.0f * (float)PI * gRateFilterHz);
+  const float alpha = dt / (tau + dt);
+  for (int i = 0; i < 3; ++i) { w_filt[i] += alpha * (w_b[i] - w_filt[i]); }
+}
+
+
+// ----------------------------------------------------------------------------
 // SECTION 2c: CORNER CANDIDATE (resolved fresh here too)
 // ----------------------------------------------------------------------------
 
@@ -263,10 +324,16 @@ struct CornerCandidate {
                      // equivalent COM offset in mm for telemetry.
 };
 
-// TODO: corner [-1,-1,-1]'s Kp below was UPDATED 2026-08-19 for the new
-// plant (mass 1.633 kg + corner-to-housing strut); the other 7 corners are
-// still the old 1.5668 kg/no-strut values -- do not treat this table as
-// internally consistent across corners until they're all re-derived.
+// TODO: MIXED-GENERATION PLANT. Corner [-1,-1,-1]'s Kp/ell/theta_eq below
+// were UPDATED 2026-08-19 for mass 1.633 kg + the new corner-to-housing
+// strut (user-supplied); the OTHER SEVEN corners are still the 1.5668
+// kg/no-strut values. This table is NOT internally consistent across
+// corners -- fine for continued single-corner [-1,-1,-1] bring-up, but
+// do not resolve onto or trust any OTHER corner's numbers until they're
+// re-derived the same way. [-1,-1,-1]'s own gB (corner-resolution
+// direction) was NOT part of this update -- see that entry's own comment
+// for why this is a low-risk gap. Replace the remaining seven corners
+// (gB/Kp/ellM) once available.
 static const CornerCandidate kCorners[8] = {
   { "[-1,-1,-1]"  // UPDATED 2026-08-19 for mass 1.6330 kg (+4.2%) + the new
                   // corner-to-housing strut (mounted 4.49 deg off the
@@ -454,7 +521,13 @@ void printState(uint32_t t_ms, const float rho[3], const float rhoLp[3],
   Serial.print('\t'); Serial.print(satDuty[0], 3);
   Serial.print('\t'); Serial.print(satDuty[1], 3);
   Serial.print('\t'); Serial.print(satDuty[2], 3);
-  Serial.print('\t'); Serial.println(overrunCount);
+  Serial.print('\t'); Serial.print(overrunCount);
+  // Filtered rate readout -- compare against om_x/y/z_dps above to see the
+  // fix working directly: hw-run-analysis.md's 35 Hz mode should show up
+  // as a much bigger raw-vs-filtered gap than ordinary sensor noise would.
+  Serial.print('\t'); Serial.print(w_filt[0] * (float)RAD_TO_DEG, 2);
+  Serial.print('\t'); Serial.print(w_filt[1] * (float)RAD_TO_DEG, 2);
+  Serial.print('\t'); Serial.println(w_filt[2] * (float)RAD_TO_DEG, 2);
 }
 
 
@@ -521,9 +594,12 @@ Moteus& wheelObj(int i) {
 }
 
 void commandWheels(const float rho[3]) {
+  // om uses w_filt, NOT raw w_b -- hw-run-analysis.md fix 4.1. phi and rho
+  // are unaffected; only the wheel's Kp row's om block sees the filtered
+  // rate. Raw w_b still drives the trip checks below, unfiltered.
   const float xVec[9] = {
     phi[0], phi[1], phi[2],
-    w_b[0], w_b[1], w_b[2],
+    w_filt[0], w_filt[1], w_filt[2],
     rho[0], rho[1], rho[2],
   };
 
@@ -599,7 +675,14 @@ void commandWheels(const float rho[3]) {
 // SECTION 2e-2: AUTOMATIC TRIM ADAPTATION -- identical to Stage4_AutoTrim.ino
 // ----------------------------------------------------------------------------
 
-static float gKAdapt = 2.922e-6f;   // tau_a = 60 s -- see Stage4_AutoTrim.ino
+// hw-run-analysis.md 4.5: stability limit k_a < 0.00214 (15-state augmented
+// model, tau_filt=5s -- see Stage4_AutoTrim_RateFilter.ino's header note).
+// 1e-4 sits at ~21x margin and converges in ~10s, replacing Stage5_AutoTrim
+// .ino's original tau_a=60s (2.922e-6) default. Live-settable with
+// "k<value>" -- NON-MONOTONIC per the source measurement (1e-4 converges
+// faster than 1e-3), so re-measure before assuming "higher = faster" past
+// this point.
+static float gKAdapt = 1.0e-4f;
 
 static const float kTiltQuiet  = 0.00872664619f;   // rad, 0.5 deg
 static const float kOmegaQuiet = 0.10f;              // rad/s
@@ -607,7 +690,11 @@ static const float kOmegaQuiet = 0.10f;              // rad/s
 void updateTrim(float dt) {
   if (!gTrimEnabled || !gArmed) { return; }
   if (norm3(phi) >= kTiltQuiet)  { return; }
-  if (norm3(w_b)  >= kOmegaQuiet) { return; }
+  // w_filt, not raw w_b -- see header note. hw-run-analysis.md's own data
+  // showed phi clean while raw om is dominated by the 35 Hz mode, so
+  // gating on raw w_b would block adaptation during exactly the condition
+  // this fix targets.
+  if (norm3(w_filt) >= kOmegaQuiet) { return; }
 
   for (int i = 0; i < 3; ++i) {
     gTrim[i] += gKAdapt * dt * gRhoLp[i];   // PLUS -- VERIFIED, see Stage4_AutoTrim.ino
@@ -676,6 +763,17 @@ void handleSerialCommands() {
   } else if (cmd == 'k') {
     gKAdapt = val;
     Serial.print("# gKAdapt = "); Serial.println(gKAdapt, 8);
+  } else if (cmd == 'f') {
+    // hw-run-analysis.md 4.1's range is 15-25 Hz -- sweep it live rather
+    // than reflashing per step. Refuses <=0 (would divide by zero / give
+    // a negative tau) instead of silently producing garbage.
+    if (val > 0.0f) {
+      gRateFilterHz = val;
+      Serial.print("# gRateFilterHz = "); Serial.print(gRateFilterHz, 1);
+      Serial.println(" Hz");
+    } else {
+      Serial.println("# REFUSED: f<Hz> needs a positive value (try 15-25).");
+    }
   } else if (cmd == 'o') {
     // Test 6: set omega_cap. "o40" restores the real policy default.
     gMaxOmega = val;
@@ -703,8 +801,8 @@ void handleSerialCommands() {
   } else {
     Serial.println("# unknown. use: a<0/1>  c (re-resolve)  r<val> (log marker)  "
                     "z<0/1> (clear/seed trim)  x<0/1> (freeze/resume trim)  "
-                    "k<value> (trim gain)  o<rad/s> (omega_cap)  "
-                    "p<rad/s> (taper_start)  h<0/1>");
+                    "k<value> (trim gain)  f<Hz> (rate filter corner)  "
+                    "o<rad/s> (omega_cap)  p<rad/s> (taper_start)  h<0/1>");
   }
 }
 
@@ -716,7 +814,7 @@ void handleSerialCommands() {
 void setup() {
   Serial.begin(115200);
   while (!Serial) {}
-  Serial.println("started - CORNER STAGE 5: RELEASE + AUTO TRIM (stop/catch + e-stop, cube free)");
+  Serial.println("started - CORNER STAGE 5: RELEASE + AUTO TRIM + RATE FILTER (stop/catch + e-stop, cube free)");
 
   const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
   while (errorCode != 0) {
@@ -771,11 +869,15 @@ void setup() {
                   "armed\ttrip_reason\t"
                   "trim_x_deg\ttrim_y_deg\ttrim_z_deg\ttrim_com_mm\ttrim_enabled\t"
                   "temp_x\ttemp_y\ttemp_z\tsat_duty_x\tsat_duty_y\tsat_duty_z\t"
-                  "loop_overrun_count");
+                  "loop_overrun_count\t"
+                  "om_x_filt_dps\tom_y_filt_dps\tom_z_filt_dps");
   Serial.println("# STARTS DISARMED. Stop/catch + e-stop ready BEFORE sending a1.");
   Serial.println("# trip_reason: 0 none  1 tilt  2 omega  3 nan");
   Serial.println("# z1/z0 seed/clear trim, x1/x0 freeze/resume adaptation,");
-  Serial.println("# k<value> sets adaptation gain (default tau_a=60s).");
+  Serial.println("# k<value> sets adaptation gain (default k_a=1e-4).");
+  Serial.print("# Rate low-pass at "); Serial.print(gRateFilterHz, 1);
+  Serial.println(" Hz feeds the control law (om_x/y/z_filt_dps in");
+  Serial.println("# telemetry) -- f<Hz> to sweep 15-25 Hz live, see hw-run-analysis.md.");
   Serial.println("# o<rad/s>/p<rad/s> set omega_cap/taper_start LIVE (Test 6 --");
   Serial.println("# real policy default is 40/36, o40 p36 restores it).");
   Serial.println("# Telemetry decimated 10x (~50 Hz) -- see header note.");
@@ -826,6 +928,8 @@ void loop() {
   readIMURaw(imu, aImu, wImu);
   attitudeUpdate(aImu, wImu, dt);
   updateCornerProjection();
+  updateRateFilter(dt);   // before commandWheels() -- this cycle's w_filt
+                           // must be fresh, unlike gTrim's one-cycle lag
 
   const float rho[3] = {
     kAxisWheelSign[0] * moteusX.last_result().values.velocity * 2.0f * (float)PI,
@@ -848,10 +952,20 @@ void loop() {
 // NOTES
 // ----------------------------------------------------------------------------
 // This file is Cube Fine-Tuning -- Test Plan.md's Session 2/3 (Tests 5, 6,
-// 7), on ONE corner. Suggested order, matching the Test Plan's own:
+// 7), on ONE corner, PLUS hw-run-analysis.md's rate-filter fix (4.1) and
+// adaptation-speed change (4.5). vs Stage5_AutoTrim.ino: identical control
+// law, identical corner candidate table, identical trim mechanism (guards,
+// sign, clamp) -- the only behavioral differences are w_filt replacing w_b
+// in commandWheels()'s om block and updateTrim()'s quiescence gate, and
+// gKAdapt's default raised from 2.922e-6 to 1e-4. If something looks wrong
+// here that isn't about the 35 Hz mode or trim-adaptation speed
+// specifically, it's worth checking whether Stage5_AutoTrim.ino has the
+// same problem before assuming this file's changes caused it.
+//
+// Suggested order, matching the Test Plan's own:
 //   1. Test 5: arm, let trim converge (watch trim_x/y/z_deg settle, ~4
-//      time constants at the default tau_a=60s is ~4 min), or "z1" to
-//      fast-start.
+//      time constants at this file's default k_a=1e-4 is ~10 s), or "z1"
+//      to fast-start.
 //   2. Test 6: with trim converged, read the settled rho_x/y/z_lp
 //      (standing_speed_report.py, or just watch telemetry), set
 //      "o<3x that>" and "p<90% of that>", verify it still balances a
@@ -861,17 +975,25 @@ void loop() {
 //      trim/standing-speed/temperature/loop_overrun_count/sat_duty
 //      against Test 7's table (plot_session_csv.py --cols trim,wheels,
 //      endurance, or fine-tuning/README.md for the exact commands).
+//      Also watch om_x/y/z_filt_dps vs om_x/y/z_dps -- a persistently
+//      large raw-vs-filtered gap over a 30-minute run is the 35 Hz mode
+//      still present (see hw-run-analysis.md), not a bug in this file.
 //
 // Re-derive Kp once the battery cable/DC-DC (and eventually the flight
 // battery itself) are actually mounted (measure -> derive -> re-tune, same
 // workflow as everywhere else in this project) -- trim will re-converge to
 // a different, smaller value once they are, that is not a sign anything
-// here is wrong. Then repeat this file's Tests 5-7 for the OTHER SEVEN
-// corners before trusting any of them -- a result on one corner says
-// nothing about another (same discipline edge-bringup established per-
-// axis, now per-corner). Once multiple corners are validated, corner-to-
-// corner transitions are where the quaternion/MEKF estimator becomes
-// load-bearing (Attitude representation for the firmware.md section 4) --
-// this reduced-attitude gam estimator is deliberately NOT that, and isn't
-// meant to be pushed into large-angle territory.
+// here is wrong. The SAME applies to the new mass (1.633 kg) and strut
+// hw-run-analysis.md references -- corner [-1,-1,-1]'s Kp is done
+// (2026-08-19), the other seven are still the old table (see the TODO
+// above it); drop in their re-derived Kp/gB/ellM once available, before
+// drawing conclusions from a multi-corner comparison. Then repeat this
+// file's Tests 5-7 for the OTHER SEVEN corners before trusting any of
+// them -- a result on one corner says nothing about another (same
+// discipline edge-bringup established per-axis, now per-corner). Once
+// multiple corners are validated, corner-to-corner transitions are where
+// the quaternion/MEKF estimator becomes load-bearing (Attitude
+// representation for the firmware.md section 4) -- this reduced-attitude
+// gam estimator is deliberately NOT that, and isn't meant to be pushed
+// into large-angle territory.
 // ============================================================================

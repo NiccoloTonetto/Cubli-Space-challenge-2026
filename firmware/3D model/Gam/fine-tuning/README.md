@@ -28,7 +28,7 @@ free and take fifteen minutes — do not jump to Test 7.**
 | # | Test | Run this | Pass / what you're looking for |
 |---|---|---|---|
 | 4 | Standing wheel speeds | Balance quietly 2 min, then `python ../FINAL/standing_speed_report.py run.csv --window 30` | Verdict per axis (healthy / worth attention / trim it / will not survive) straight from the Test Plan's table. `--k1`/`--k3`/`--ell` override the corner `[-1,-1,-1]` defaults once another corner's own values are known |
-| 5 | Automatic trim | [`../corner-bringup/Stage5_AutoTrim/`](../corner-bringup/Stage5_AutoTrim/Stage5_AutoTrim.ino) (or `Stage4_AutoTrim/` for hand-held bring-up first) — arm, watch `trim_x/y/z_deg` converge, or `z1` to fast-start | ~90% of the error cancelled in 4 time constants (~4 min at the default `tau_a`=60s). Converged value is a live COM-error readout (`trim_com_mm`) |
+| 5 | Automatic trim | [`../corner-bringup/Stage5_AutoTrim/`](../corner-bringup/Stage5_AutoTrim/Stage5_AutoTrim.ino) (or `Stage4_AutoTrim/` for hand-held bring-up first) — arm, watch `trim_x/y/z_deg` converge, or `z1` to fast-start. If a hardware run shows torque saturating on a coherent high-frequency mode (see hw-run-analysis.md finding below), use the `_RateFilter` variant instead, same procedure | ~90% of the error cancelled in 4 time constants — `tau_a`=60s (default `k_a`=2.922e-6) in the plain AutoTrim files, ~10s (default `k_a`=1e-4) in the `_RateFilter` files. Converged value is a live COM-error readout (`trim_com_mm`) |
 | 6 | Wheel-speed cap | `Stage5_AutoTrim.ino`'s `o<rad/s>`/`p<rad/s>` (live, no reflash) — set `omega_cap` to ~3x the Test 4 post-trim standing speed, `taper_start` to 90% of that, verify, step toward `o40 p36` | Fade, not a switch (already true — taper only touches spin-up, never braking, verified in `commandWheels()`). No audible buzzing/chatter as it tightens |
 | 7 | (start here, finish in Session 3) | Same file, same `o`/`p` from Test 6 | — |
 
@@ -52,6 +52,35 @@ Stage 1):
 | complementary filter `tau` in 0.5-1.5 s | **Doesn't map cleanly** — same architecture difference. `kP=4` gives a rough correction bandwidth well outside that range in the classical-filter sense, but comparing the two numbers directly isn't apples-to-apples given the different filter structure |
 | accelerometer gate 10-20%, deliberately loose | **Gap, not fixed** — there is no accelerometer-magnitude gate in the current filter at all; a sudden linear acceleration (a bump, a catch) corrupts `ga` with no protection this cycle. Worth adding if Test 1 ever shows a peak tied to handling transients specifically, not fixed preemptively here since it's a real architecture change, not a one-line constant |
 
+## Findings so far (hw-run-analysis.md, 373.5 s hardware run, auto-trim on)
+
+A real continuous corner-balance run found a problem the sim envelope
+didn't predict: torque saturated 71.8% of the time, driven by a ~35 Hz
+structural mode riding on the gyro signal, in phase across `phi`, `om`
+AND `u` (a resonant shape white noise cannot produce) — not because the
+cube was fighting a real disturbance (saturated vs unsaturated mean tilt
+were statistically identical). The 1.3 Hz-bandwidth control loop cannot
+damp a 35 Hz mode; it can only feed it energy through `K2` and the torque
+clamp, in a closed loop that re-excites the mode every cycle.
+
+| Fix | Where |
+|---|---|
+| 4.1 — first-order low-pass (15-25 Hz, 20 Hz default) on the rate signal feeding the control law's `om` block only (not `w_b` globally — trip checks and estimator stay on raw, unfiltered rate) | [`../corner-bringup/Stage4_AutoTrim_RateFilter/`](../corner-bringup/Stage4_AutoTrim_RateFilter/Stage4_AutoTrim_RateFilter.ino), [`../corner-bringup/Stage5_AutoTrim_RateFilter/`](../corner-bringup/Stage5_AutoTrim_RateFilter/Stage5_AutoTrim_RateFilter.ino) — live-settable with `f<Hz>` |
+| 4.5 — adaptation gain default raised from `tau_a`=60s (`k_a`=2.922e-6) to `k_a`=1e-4 (~21x below the re-derived stability limit on the 15-state augmented model, converges in ~10s) | same two files, `k<value>` unchanged as the live override |
+| 4.2 — reduce `qr` (needs the actual re-derived `Kp` for the new plant, not implementable from the analysis alone) | **not done** — see "What's still open" below |
+
+**Update 2026-08-19: corner `[-1,-1,-1]`'s `gB`/`Kp`/`ell`/`theta_eq` are
+all now re-derived and applied** in all four AutoTrim-family files (mass
+1.633 kg + the new strut) — that corner's set is complete. The other
+seven corners are still the old 1.5668 kg / no-strut values — every
+`kCorners` table is a MIXED-GENERATION table, see the TODO comment above
+each. Full numbers (geometry and `Kp` robustness diagnostics are known
+for all eight, but not the `Kp` matrices themselves for corners 2-8) and
+the multi-corner finding that came with them (six of eight corners now
+have `theta_eq` beyond their own recovery envelope — see below) are in
+[`../../docs/dynamics/Cube-Performance-Envelope-Results.md`](../../../../docs/dynamics/Cube-Performance-Envelope-Results.md)'s
+"Hardware-stage update" section.
+
 ## Files this points at
 
 | Test(s) | File |
@@ -59,10 +88,30 @@ Stage 1):
 | 1 | [`../FINAL/fft_tilt_analysis.py`](../FINAL/fft_tilt_analysis.py) |
 | 4 | [`../FINAL/standing_speed_report.py`](../FINAL/standing_speed_report.py) |
 | 5, 6, 7 | [`../corner-bringup/Stage4_AutoTrim/`](../corner-bringup/Stage4_AutoTrim/Stage4_AutoTrim.ino) (hand-held), [`../corner-bringup/Stage5_AutoTrim/`](../corner-bringup/Stage5_AutoTrim/Stage5_AutoTrim.ino) (unsupported, real policy) |
-| 7 (plots) | [`../FINAL/plot_session_csv.py`](../FINAL/plot_session_csv.py) — recognizes all three corner telemetry widths now: 21 (`CornerBalance`/`CornerBalance_WiFi`), 26 (`Stage4_AutoTrim`), 33 (`Stage5_AutoTrim`, adds `trim`/`endurance` trace groups) |
+| 5, 6, 7 + hw-run-analysis.md's 35 Hz fix | [`../corner-bringup/Stage4_AutoTrim_RateFilter/`](../corner-bringup/Stage4_AutoTrim_RateFilter/Stage4_AutoTrim_RateFilter.ino), [`../corner-bringup/Stage5_AutoTrim_RateFilter/`](../corner-bringup/Stage5_AutoTrim_RateFilter/Stage5_AutoTrim_RateFilter.ino) — same procedures as the plain AutoTrim files, plus `f<Hz>` for the rate-filter corner |
+| 7 (plots) | [`../FINAL/plot_session_csv.py`](../FINAL/plot_session_csv.py) — recognizes all five corner telemetry widths now: 21 (`CornerBalance`/`CornerBalance_WiFi`), 26 (`Stage4_AutoTrim`), 29 (`Stage4_AutoTrim_RateFilter`), 33 (`Stage5_AutoTrim`, adds `trim`/`endurance` trace groups), 36 (`Stage5_AutoTrim_RateFilter`, adds filtered-rate traces to the `rates` group) |
 
 ## What's still open
 
+- **Multi-corner locomotion is currently off the table on six of eight
+  corners** — the strut update above shifted `theta_eq` unevenly across
+  the cube; only `[-1,-1,-1]` and `[+1,+1,+1]` (the primary body-diagonal
+  ends) still have positive recovery margin. Single-corner balancing
+  (this project's current test scope) is unaffected. Full table in
+  [`../../docs/dynamics/Cube-Performance-Envelope-Results.md`](../../../../docs/dynamics/Cube-Performance-Envelope-Results.md).
+  Needs a decision (rebalance the pole, or a counterweight) before this
+  becomes a mission-capability assumption elsewhere.
+- **`Kp[3][9]` is stale for SEVEN of eight corners, in every corner-
+  bringup file** (corner `[-1,-1,-1]` — `gB`/`Kp`/`ell`/`θ_eq` all — is
+  now complete and applied). Geometry (`gB`/`ell`/`Sg`/`λ`/`θ_eq`) and
+  `Kp` robustness diagnostics are known for all eight (see the Results
+  doc), but the actual `Kp[3][9]` matrices for corners 2–8 are not yet
+  transcribed anywhere in this repo. **Do not populate those corners'
+  `gB` without their matching `Kp`** — each corner needs its own gains;
+  cross-applying corner 1's diverges at essentially the open-loop rate
+  on six of the other seven, and the antipodal corner `[+1,+1,+1]` is a
+  13s slow fall a short test would score as a false pass. Fix 4.2
+  ("reduce `qr`") is moot for `[-1,-1,-1]` now, still open for the rest.
 - **Tests 5-7 are Stage 4/5 AutoTrim only, on ONE corner.** Per the Test
   Plan and every other file in this project: a result on one corner says
   nothing about another. Repeat for the other seven once this one is
