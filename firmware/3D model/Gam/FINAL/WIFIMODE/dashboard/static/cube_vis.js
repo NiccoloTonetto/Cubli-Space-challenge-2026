@@ -60,10 +60,10 @@ export function initCube(canvas) {
     }));
   body.add(box);
 
-  const frame = new THREE.LineSegments(
+  const wireframe = new THREE.LineSegments(
     new THREE.EdgesGeometry(box.geometry),
     new THREE.LineBasicMaterial({ color: CYAN, transparent: true, opacity: 0.85 }));
-  body.add(frame);
+  body.add(wireframe);
 
   // --- reaction wheels: one per body axis, spun at the measured rho so wheel
   //     speed is visible as motion and not only as a number ---

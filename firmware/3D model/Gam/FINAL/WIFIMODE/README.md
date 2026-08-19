@@ -21,7 +21,7 @@ a link watchdog are added.
 |---|---|
 | [`CornerBalance_WiFi/`](CornerBalance_WiFi/CornerBalance_WiFi.ino) | 3 wheels, 21-field CSV @ 250 Hz — Stage 4 full law |
 | [`EdgeBalance_WiFi/`](EdgeBalance_WiFi/EdgeBalance_WiFi.ino) | 1 axis, 10-field CSV @ 500 Hz |
-| [`corner-bringup/`](corner-bringup/README.md) | WiFi variants of corner Stages **1, 2, 3, 5** — Serial Monitor over UDP, no plotting |
+| [`corner-bringup/`](corner-bringup/README.md) | WiFi variants of corner Stages **1, 2, 3, 4-FullLaw, 4-AutoTrim, 4-AutoTrim+RateFilter, 5** — Serial Monitor over UDP, no plotting |
 | [`xiao_teensy_bridge/`](xiao_teensy_bridge/xiao_teensy_bridge.ino) | ESP32C6 relay — copy of `firmware/XIAO/xiao_teensy_bridge/`, unchanged |
 | [`terminal_wifi.py`](terminal_wifi.py) | Serial-Monitor-over-WiFi terminal — every corner stage, no plot |
 | [`telemetry_python_wifi.py`](telemetry_python_wifi.py) | live plotter — **EDGE only** (10 col) |
@@ -79,7 +79,7 @@ USB — the worst possible failure mode for a safety command.
 
 Hence `p`. Keep this straight when swapping between USB and WiFi builds.
 
-The **corner bring-up** WiFi stages (`corner-bringup/Stage1..3,5`) keep the USB letters byte-identical, so halt stays `h1`/`h0` and Stage 1's `p` / `t<Nm>` still fire the pulse. Their keepalive is `k`, link mode is `l<0/1>`, decimation is `d<N>`. `terminal_wifi.py` sends `k` every 100 ms, which `CornerBalance_WiFi` already accepts as a keepalive alias — one terminal drives all five stages. Full grammar: [`corner-bringup/README.md`](corner-bringup/README.md).
+The **corner bring-up** WiFi stages (`corner-bringup/`) keep the USB letters byte-identical, so halt stays `h1`/`h0` and Stage 1's `p` / `t<Nm>` still fire the pulse. Their keepalive is `k`, link mode is `l<0/1>`, decimation is `d<N>`. `terminal_wifi.py` sends `k` every 100 ms, which `CornerBalance_WiFi` already accepts as a keepalive alias — one terminal drives every stage. The two auto-trim stages are the sole exception to byte-identical: their trim freeze moves `x`→`y` and their adaptation gain `k`→`n`, because the bridge eats `x` and `k` is the keepalive. Full grammar: [`corner-bringup/README.md`](corner-bringup/README.md).
 
 ## Telemetry rate — why corner is 250 Hz
 

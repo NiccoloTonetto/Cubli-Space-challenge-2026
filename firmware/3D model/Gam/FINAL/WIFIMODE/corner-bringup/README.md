@@ -21,6 +21,7 @@ The control law in every file here is a verbatim copy of its USB source. **Retun
 | 3 | [`Stage3_PositionDamping_WiFi/`](Stage3_PositionDamping_WiFi/) | 18 | phi + om (rho masked), hand-ramped gain |
 | 4 | [`../CornerBalance_WiFi/`](../CornerBalance_WiFi/) | 21 | full 9-state law + friction feedforward |
 | 4-AT | [`Stage4_AutoTrim_WiFi/`](Stage4_AutoTrim_WiFi/) | 26 | same law, manual `z1` tare replaced by **automatic trim** |
+| 4-ATF | [`Stage4_AutoTrim_RateFilter_WiFi/`](Stage4_AutoTrim_RateFilter_WiFi/) | 29 | 4-AT plus a **rate low-pass** on the om block, and a 34× faster trim |
 | 5 | [`Stage5_Release_WiFi/`](Stage5_Release_WiFi/) | 21 | full law, **real** trip policy, latched reason |
 
 **Stage 4 is not in this folder and is not duplicated.** `../CornerBalance_WiFi/` already was the WiFi Stage 4 — it is the validated build with recorded sessions, and it is left exactly as it was. It is also the only stage with two ways to read it:
@@ -32,28 +33,36 @@ Stage 5's 21 fields end in `trip_reason`, not `gain_scale` — the one layout di
 
 Stage 4-AT is Stage 4's law with the manual snapshot tare swapped for the closed-loop adaptive trim from *Automatic Trim — Replacing the Hardcoded IMU Offset.md*. Its 26 fields are Stage 4's 21 plus `trim_x_deg trim_y_deg trim_z_deg trim_com_mm trim_enabled`. Watching trim converge takes minutes, so `d20` (25 Hz) is the rate to read it at.
 
+Stage 4-ATF is 4-AT plus the two fixes *hw-run-analysis.md* drew out of a 373.5 s continuous balance:
+
+- **Fix 4.1** — a first-order low-pass (default 20 Hz, `f<Hz>` to sweep 15–25) on the body rate, feeding **only** the control law's om block. That run saturated torque 71.8 % of the time because a ~35 Hz structural mode was riding on the gyro and the K2 term kept amplifying it; a 1.3 Hz loop cannot damp a 35 Hz mode, only feed it. `w_b` stays raw everywhere else — estimator, safety trips, and the `om_x/y/z_dps` telemetry columns.
+- **Fix 4.5** — `gKAdapt` default raised from 2.922e-6 (τ_a = 60 s) to **1e-4**, ~21× below the re-derived stability limit. Trim now converges in ~10 s instead of ~4 min. The response was measured **non-monotonic** (1e-4 beats 1e-3), so do not tune past it by feel.
+
+Its 29 fields are 4-AT's 26 plus `om_x_filt_dps om_y_filt_dps om_z_filt_dps`, printed next to the raw ones deliberately: the gap between the two is the only direct evidence the filter is doing anything. `d20` is still the rate to read it at — convergence is fast now, but the raw-vs-filtered comparison is much easier to eyeball slowly.
+
 ---
 
 ## Command grammar
 
-Every stage keeps its USB command letters **byte-identical** — with two exceptions in Stage 4-AT that the transport forced, called out below. That was the point: the terminal should behave like the Serial Monitor, including what you type into it.
+Every stage keeps its USB command letters **byte-identical** — with two exceptions in the Stage 4 auto-trim builds that the transport forced, called out below. That was the point: the terminal should behave like the Serial Monitor, including what you type into it.
 
-| | Stage 1 | Stage 2 | Stage 3 | Stage 4-AT | Stage 5 |
-|---|---|---|---|---|---|
-| arm / disarm | — | `a<0/1>` | `a<0/1>` | `a<0/1>` (gated) | `a<0/1>` (gated, clears trip latch) |
-| gain scale | — | — | `g<0..1>` | `g<0..1>` | — |
-| tilt limit | — | — | `m<deg>` | — | — |
-| select wheel | `w<0/1/2>` | — | — | — | — |
-| fire pulse | `p` | — | — | — | — |
-| pulse size | `t<Nm>` | — | — | — | — |
-| log marker | — | — | — | — | `r<val>` |
-| seed / clear trim | — | — | — | `z<0/1>` | — |
-| freeze / resume adapt | — | — | — | `y<0/1>` *(USB: `x`)* | — |
-| adaptation gain | — | — | — | `n<value>` *(USB: `k`)* | — |
-| re-resolve corner | `c` | `c` | `c` | `c` | `c` |
-| halt | `h<0/1>` | `h<0/1>` | `h<0/1>` | `h<0/1>` | `h<0/1>` |
+| | Stage 1 | Stage 2 | Stage 3 | Stage 4-AT | Stage 4-ATF | Stage 5 |
+|---|---|---|---|---|---|---|
+| arm / disarm | — | `a<0/1>` | `a<0/1>` | `a<0/1>` (gated) | `a<0/1>` (gated) | `a<0/1>` (gated, clears trip latch) |
+| gain scale | — | — | `g<0..1>` | `g<0..1>` | `g<0..1>` | — |
+| tilt limit | — | — | `m<deg>` | — | — | — |
+| select wheel | `w<0/1/2>` | — | — | — | — | — |
+| fire pulse | `p` | — | — | — | — | — |
+| pulse size | `t<Nm>` | — | — | — | — | — |
+| log marker | — | — | — | — | — | `r<val>` |
+| seed / clear trim | — | — | — | `z<0/1>` | `z<0/1>` | — |
+| freeze / resume adapt | — | — | — | `y<0/1>` *(USB: `x`)* | `y<0/1>` *(USB: `x`)* | — |
+| adaptation gain | — | — | — | `n<value>` *(USB: `k`)* | `n<value>` *(USB: `k`)* | — |
+| rate filter corner freq | — | — | — | — | `f<Hz>` | — |
+| re-resolve corner | `c` | `c` | `c` | `c` | `c` | `c` |
+| halt | `h<0/1>` | `h<0/1>` | `h<0/1>` | `h<0/1>` | `h<0/1>` | `h<0/1>` |
 
-The WiFi layer therefore could not use `h`, `p` or `t`. Across all the stages the letters `a c g h m n p r t w y z` are taken, so the link controls sit on free ones:
+The WiFi layer therefore could not use `h`, `p` or `t`. Across all the stages the letters `a c f g h m n p r t w y z` are taken, so the link controls sit on free ones:
 
 | | |
 |---|---|
@@ -62,12 +71,14 @@ The WiFi layer therefore could not use `h`, `p` or `t`. Across all the stages th
 | `d<N>` | telemetry decimation, 1..100. `d2` = 250 Hz (default), `d20` = 25 Hz readable |
 | `x<0/1>` | the XIAO's own mode — consumed by the bridge, **never reaches the Teensy** |
 
-### Stage 4-AT's two remapped letters
+### The auto-trim stages' two remapped letters
 
-The USB `Stage4_AutoTrim` binds `x<0/1>` to the trim freeze and `k<value>` to the adaptation gain. Neither survives the link:
+The USB `Stage4_AutoTrim` and `Stage4_AutoTrim_RateFilter` bind `x<0/1>` to the trim freeze and `k<value>` to the adaptation gain. Neither survives the link, so both WiFi builds remap them the same way:
 
 - **`x` never reaches the Teensy** — the bridge consumes it (`x0` = WIFI_TEST, `x1` = TEENSY_BRIDGE). A freeze on `x` would work over USB and be silently dead over WiFi. It is **`y<0/1>`** here, same polarity.
 - **`k` is the keepalive** — `terminal_wifi.py` sends a bare `k` every 100 ms, which would parse as `atof("") = 0.0` and zero the adaptation gain ten times a second. Trim would sit frozen at zero and *look* like a converged trim of zero in the telemetry. It is **`n<value>`** here.
+
+Stage 4-ATF's third command, **`f<Hz>`**, did *not* have to move — `f` is free across every stage and the bridge relays it verbatim.
 
 ### The one legacy difference
 
@@ -106,6 +117,7 @@ Kill `terminal_wifi.py` while armed and confirm the board disarms within 300 ms.
 | Stage 1 | cancels an in-flight pulse (there is no `gArmed`) |
 | Stages 2, 3 | `gArmed = false` |
 | Stage 4-AT | `gArmed = false`, which also freezes trim adaptation — `updateTrim()` is gated on `gArmed`, so "do not learn from a dropped link" costs no extra state. The converged value is **kept**, not cleared |
+| Stage 4-ATF | same as 4-AT. The **rate filter is deliberately not** frozen or reset — it is a measurement filter, not learned state, so it keeps tracking `w_b` while disarmed and the om block sees a settled signal the moment you re-arm |
 | Stage 5 | `gArmed = false`, and `trip_reason` is deliberately **left alone** — losing the radio is not something the cube did, and overwriting a latched tilt/omega/nan would destroy the evidence you need before re-arming |
 
 ---
@@ -114,7 +126,7 @@ Kill `terminal_wifi.py` while armed and confirm the board disarms within 300 ms.
 
 `terminal_wifi.py` tees everything received to `session_<tag>_<stamp>.log` in [`../../telemetry/serial/`](../../telemetry/README.md) (`--no-log` to skip) — the SERIALMONITORMODE half of the recordings folder, kept apart from the live plotters' PLOTMODE csv in `telemetry/plot/`. Because the header row is in the stream, [`../../plot_session_csv.py`](../../plot_session_csv.py) opens a **Stage 5** log directly — 21 columns, though it will label the last one `gain_scale` when it is really `trip_reason`. Run it with no arguments and press `f` to pick the log from a list.
 
-Stage 1's 13, Stages 2/3's 18 and Stage 4-AT's 26 columns fall outside that script's 10/21 auto-detection. Those logs are raw records to read or post-process, which is what the bring-up stages want anyway.
+Stage 1's 13, Stages 2/3's 18, Stage 4-AT's 26 and Stage 4-ATF's 29 columns fall outside that script's 10/21 auto-detection. Those logs are raw records to read or post-process, which is what the bring-up stages want anyway — though 26 and 29 are both widths `plot_session_csv.py` knows (`CORNER_TRIM` / `CORNER_TRIM_FILT`), so passing one by name still works.
 
 ---
 

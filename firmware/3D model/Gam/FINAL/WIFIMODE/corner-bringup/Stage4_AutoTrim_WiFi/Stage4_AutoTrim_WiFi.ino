@@ -356,13 +356,46 @@ struct CornerCandidate {
                      // continuously" guard).
 };
 
+// TODO: corner [-1,-1,-1]'s Kp below was UPDATED 2026-08-19 for the new
+// plant (mass 1.633 kg + corner-to-housing strut); the other 7 corners are
+// still the old 1.5668 kg/no-strut values -- do not treat this table as
+// internally consistent across corners until they're all re-derived.
 static const CornerCandidate kCorners[8] = {
-  { "[-1,-1,-1]"  // lean 0.797 deg vs body diagonal, ell 122.84 mm, Sg 1.8875, lambda 8.2572
-    , { -0.571549475f, -0.588645577f, -0.571688354f }
-    , { { -6.9157443f, 3.39226651f, 3.42117763f, -0.834802926f, 0.420730621f, 0.42704013f, -0.000700236589f, 0.00623514736f, 0.00621826435f },  // wheel X
-        { 3.51941299f, -6.8296299f, 3.51364994f, 0.412131369f, -0.848057508f, 0.411711216f, 0.00382628222f, -0.00316504063f, 0.00381609239f },  // wheel Y
-        { 3.42913675f, 3.39467001f, -6.92366505f, 0.426502436f, 0.419758797f, -0.837698817f, 0.00606757682f, 0.00607034843f, -0.000870343472f } } // wheel Z
-    , 0.797f, 0.12284115f },
+  { "[-1,-1,-1]"  // UPDATED 2026-08-19 for mass 1.6330 kg (+4.2%) + the new
+                  // corner-to-housing strut (mounted 4.49 deg off the
+                  // balancing diagonal, near-axial -- "barely hurts" per
+                  // the source note). theta_eq 0.894 deg vs body diagonal
+                  // (was 0.797), ell 121.08 mm (was 122.84), Sg 1.9390
+                  // (was 1.8875), lambda 8.3688 s^-1 (was 8.2572).
+                  // Recovery 2.89 deg (was 3.14), margin +2.00 deg -- this
+                  // corner and its diagonal twin [+1,+1,+1] are still
+                  // safely inside their recovery envelope; the OTHER SIX
+                  // corners are NOT with this same pole (see Cube-
+                  // Performance-Envelope-Results.md) -- corner balancing
+                  // (this file's test) is unaffected, multi-corner
+                  // locomotion is not, until the pole is rebalanced or a
+                  // counterweight is added.
+                  // Robustness (source diagnostics): Ms=0.999999, slowest
+                  // mode -7.93 s^-1 (126.1 ms), |K1| spread 1.022, discrete
+                  // max|z|=0.9813, robust +/-30% worst -1.947, momentum-
+                  // limited bound 4.81 deg vs a 5.02 deg torque bound.
+                  // gB below is now ALSO the confirmed new direction
+                  // (2026-08-19, second update) -- this corner's full set
+                  // (gB/Kp/ell/theta_eq) is complete and matched. The
+                  // other seven corners' gB/ell/Sg/lambda/theta_eq are now
+                  // known too (see Cube-Performance-Envelope-Results.md)
+                  // but their Kp[3][9] are NOT -- do not extend this
+                  // update to them. Per that doc: each corner needs its
+                  // OWN gains, not a preference -- applying THIS corner's
+                  // Kp elsewhere diverges at essentially the open-loop
+                  // rate on six of eight corners, and the antipodal
+                  // corner [+1,+1,+1] becomes a 13s slow fall a <15s test
+                  // would score as a false pass.
+    , { -0.57067251f, -0.59002078f, -0.57114653f }
+    , { { -7.0685f, 3.4801f, 3.4675f, -0.8446f, 0.4235f, 0.4244f, -0.000998f, 0.006001f, 0.005931f },  // wheel X
+        { 3.5743f, -6.9184f, 3.5758f, 0.4173f, -0.8435f, 0.4177f, 0.004252f, -0.002662f, 0.004252f },  // wheel Y
+        { 3.4703f, 3.4844f, -7.0670f, 0.4242f, 0.4237f, -0.8452f, 0.005879f, 0.005948f, -0.001049f } } // wheel Z
+    , 0.894f, 0.12108f },
   { "[-1,-1,+1]"  // lean 3.170 deg vs body diagonal, ell 128.54 mm, Sg 1.9750, lambda 8.1212
     , { -0.546220303f, -0.562558711f, 0.620621562f }
     , { { -7.58488846f, 3.33574939f, -3.65192771f, -0.921932399f, 0.430031687f, -0.480414748f, 0.000473975349f, 0.00748626003f, -0.00814931281f },  // wheel X
