@@ -99,4 +99,6 @@ armed, gain_scale, wheel_omega_lp, wheel_pos, wheel_vel
 
 `matlab/2Dmodel/Validation/telemetry_python.py` (edge PLOTMODE, over the COM
 port). For plotting a saved session afterwards, use
-[`../plot_session_csv.py`](../plot_session_csv.py) — it reads both formats.
+[`../plot_session_csv.py`](../plot_session_csv.py) — it reads both formats. It
+looks for recordings under [`../telemetry/`](../telemetry/README.md), but a USB
+capture saved anywhere else in the tree is found too, and a path always works.

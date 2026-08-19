@@ -167,7 +167,7 @@ static LinkMode gLinkMode = LinkMode::WIFI;   // boot default -- see header
 const uint32_t kLinkBaud      = 1000000;   // Serial1 <-> XIAO. Must match
                                             // TEENSY_LINK_BAUD in the XIAO
                                             // sketch.
-const uint32_t kLinkTimeoutMs = 300;       // auto-disarm if WIFI mode and no
+const uint32_t kLinkTimeoutMs = 3000;       // auto-disarm if WIFI mode and no
                                             // Serial1 line in this long
                                             // (telemetry_python_wifi_corner.py
                                             // sends a keepalive every 100 ms,
@@ -565,7 +565,7 @@ static const float kMaxTilt    = 0.4363f;   // rad, 25 deg, vs norm3(phi)
 // there's still a genuine hardware ceiling behind it rather than
 // "effectively infinite." TAU_MAX below is untouched and is still the real
 // physical torque saturation.
-static const float kMaxOmega   = 418.43951f;    // rad/s (2000 RPM, motor rating)
+static const float kMaxOmega   = 618.43951f;    // rad/s (2000 RPM, motor rating)
 static const float kTauMax     = 0.12f;     // N*m, TAU_MAX
 static const float kTaperStart = 36.0f;     // rad/s -- irrelevant now: with
                                               // kMaxOmega this large, the

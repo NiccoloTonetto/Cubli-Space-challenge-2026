@@ -7,6 +7,9 @@ management + friction feedforward + 0.5° arm gate), cube **held by hand**.
 ```
 FINAL/
 ├── plot_session_csv.py          offline plotter — reads either format
+├── telemetry/                   every recording, split by mode
+│   ├── plot/                    PLOTMODE .csv — from the live plotters
+│   └── serial/                  SERIALMONITORMODE .log — from terminal_wifi.py
 ├── USBMODE/
 │   ├── CornerBalance/           3 wheels, USB only
 │   └── EdgeBalance/             1 axis (X/Y/Z selectable), USB only
@@ -139,11 +142,22 @@ lines and says so.
 
 ## After a run: `plot_session_csv.py`
 
-Both live scripts save a timestamped CSV when you close the plot window.
+Both live scripts save a timestamped CSV when you close the plot window, into
+[`telemetry/plot/`](telemetry/README.md); `terminal_wifi.py`'s session logs go
+to `telemetry/serial/`. See [`telemetry/README.md`](telemetry/README.md) for
+what separates the two.
 
 ```bash
+# no arguments — asks which file:
+#   d  newest recording (the run you just did)
+#   f  list both modes and pick by number, name, or timestamp
+python plot_session_csv.py
+
 # interactive — every trace as a checkbox, tick what you want
-python plot_session_csv.py WIFIMODE/telemetry_corner_20260816_143022.csv
+python plot_session_csv.py telemetry/plot/telemetry_corner_20260816_143022.csv
+
+# the timestamp alone is enough to name a file
+python plot_session_csv.py 143022 --cols tilt
 
 # straight to a figure
 python plot_session_csv.py run.csv --cols tilt

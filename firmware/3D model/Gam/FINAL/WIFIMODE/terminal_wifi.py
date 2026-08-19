@@ -47,13 +47,16 @@ accepts it as a keepalive alias -- which is why this script drives all five
 stages unmodified. Nothing here ever sends a bare 'h' on its own.
 
 ---------------------------------------------------------------------------
-LOGGING: every received line is also appended to session_<tag>_<stamp>.log
-next to this script, unless --no-log. Since the tab-delimited stream carries
-its header row, ../plot_session_csv.py can open a STAGE 5 log directly (21
-columns, though it will label the last one gain_scale when it is really
-trip_reason). Stage 1's 13 and Stages 2/3's 18 columns are outside that
-script's 10/21 auto-detection -- for those the log is a raw record to read or
-post-process, not something to plot.
+LOGGING: every received line is also appended to
+../telemetry/serial/session_<tag>_<stamp>.log, unless --no-log. That folder
+holds the SERIALMONITORMODE captures; the live plotters' PLOTMODE csv files
+live apart from them in ../telemetry/plot/.
+
+Since the tab-delimited stream carries its header row, ../plot_session_csv.py
+can open a STAGE 5 log directly (21 columns, though it will label the last one
+gain_scale when it is really trip_reason). Stage 1's 13 and Stages 2/3's 18
+columns are outside that script's 10/21 auto-detection -- for those the log is
+a raw record to read or post-process, not something to plot.
 
 Requires: nothing outside the standard library.
 
@@ -75,7 +78,13 @@ DEFAULT_XIAO_IP = "172.20.10.14"   # must match XIAO_IP in xiao_teensy_bridge.in
 DEFAULT_PORT    = 4210             # must match UDP_PORT in xiao_teensy_bridge.ino
 HEARTBEAT_INTERVAL_S = 0.1         # well under the firmware's 300 ms timeout
 QUIET_WARN_S = 2.0                 # warn if nothing arrives for this long
-OUT_DIR = Path(__file__).resolve().parent
+
+# Every recording in the FINAL tree lands under FINAL/telemetry/, split by the
+# mode that wrote it: SERIALMONITORMODE logs here, the live plotters' PLOTMODE
+# csv next door in ../telemetry/plot/. These two are not interchangeable --
+# tab-delimited, width set by whichever bring-up stage is flashed, and only
+# Stage 5's 21 columns are plottable -- so they do not belong in one heap.
+OUT_DIR = Path(__file__).resolve().parent.parent / "telemetry" / "serial"
 
 QUIET_HELP = (
     "... nothing received for {:.0f}s. Check that: the XIAO is in x1 "
@@ -131,13 +140,14 @@ def main():
     log_file = None
     if not args.no_log:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
         log_path = OUT_DIR / f"session_{args.tag}_{stamp}.log"
         log_file = log_path.open("w", encoding="ascii", errors="replace",
                                  newline="\n")
 
     print(f"Listening on UDP :{args.port}, sending to {args.ip}:{args.port}.")
     if log_file is not None:
-        print(f"Logging to {log_path.name}")
+        print(f"Logging to telemetry/serial/{log_path.name}")
     print("Type a command and press Enter. 'k' keepalive is automatic; "
           "halt is h1/h0. Ctrl+C to quit.")
     print("-" * 72)
@@ -183,6 +193,8 @@ def main():
         if log_file is not None:
             if lines:
                 print(f"Wrote {lines} lines to {log_path}")
+                # The plotter resolves a bare filename against every recording
+                # under FINAL/, so the folder does not have to be typed here.
                 print(f"Stage 5 logs can be plotted with:  "
                       f'python ../plot_session_csv.py "{log_path.name}"')
             else:

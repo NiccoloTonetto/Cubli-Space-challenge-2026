@@ -17,6 +17,29 @@ Monitor) are also accepted: the delimiter is sniffed per file.
 ----------------------------------------------------------------------
 USAGE
 
+  No arguments at all -- the usual case after a recording session:
+
+      python plot_session_csv.py
+
+  Asks which file to open:
+
+      d  default -- the newest recording found (that is, the one the session
+                    you just finished wrote)
+      f  file    -- list them and type a filename, a path, or a list number
+      q  quit
+
+  Recordings live in FINAL/telemetry/, split by the mode that wrote them:
+
+      telemetry/plot/     telemetry_*.csv  -- PLOTMODE, comma-delimited, from
+                          telemetry_python_wifi.py / _corner.py
+      telemetry/serial/   session_*.log    -- SERIALMONITORMODE, tab-delimited,
+                          from terminal_wifi.py
+
+  The picker lists the two apart and labels which is which, since only a
+  Stage 5 serial log is wide enough to plot (21 columns); Stage 1's 13 and
+  Stages 2/3's 18 are outside the auto-detection below. Anything left
+  elsewhere under FINAL/ is still found and still openable by name.
+
   Interactive -- no idea yet what you want to see:
 
       python plot_session_csv.py run.csv
@@ -117,6 +140,7 @@ import argparse
 import csv
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -253,6 +277,197 @@ def filter_traces(wanted, series):
     kept    = [n for n in wanted if n in series]
     missing = [n for n in wanted if n not in series]
     return kept, missing
+
+
+# ---------------------------------------------------------------------------
+# Choosing a file -- what runs when the script is started with no arguments
+# ---------------------------------------------------------------------------
+
+# The recording scripts all write into FINAL/telemetry/, split by the mode that
+# produced the file: telemetry/plot/ for the live plotters' PLOTMODE csv,
+# telemetry/serial/ for terminal_wifi.py's SERIALMONITORMODE logs. The search
+# still starts one level up at FINAL/ rather than at telemetry/, so a capture
+# saved somewhere else -- an older run, a file dropped in by hand, a USB-side
+# recording -- is still reachable instead of invisible.
+CAPTURE_ROOT = Path(__file__).resolve().parent
+TELEMETRY_DIR = CAPTURE_ROOT / "telemetry"
+
+CAPTURE_SUFFIXES = (".csv", ".log")
+
+
+def capture_mode(path):
+    """PLOT or SERIAL -- which recorder wrote this file.
+
+    The folder decides, so a file keeps its mode even if it was renamed; the
+    suffix is the fallback for anything sitting outside telemetry/. It is worth
+    showing in the picker because the two are different wire formats: PLOT is
+    comma-delimited and always 10 or 21 columns, SERIAL is tab-delimited and
+    only plottable at all when the stage that wrote it emitted 21."""
+    parents = {p.name.lower() for p in path.parents}
+    if "serial" in parents:
+        return "SERIAL"
+    if "plot" in parents:
+        return "PLOT"
+    return "SERIAL" if path.suffix.lower() == ".log" else "PLOT"
+
+
+def find_captures(root=CAPTURE_ROOT):
+    """Every capture at or below `root`, newest first.
+
+    Modification time, not the name's timestamp: a file copied in from another
+    machine or renamed by hand should still sort where it belongs, and a capture
+    that never got a timestamped name should still be reachable."""
+    files = [p for p in root.rglob("*")
+             if p.suffix.lower() in CAPTURE_SUFFIXES and p.is_file()]
+    return sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
+def describe(path, with_mode=True):
+    """One line per file for the picker: which mode, where, when, how big.
+
+    `with_mode=False` under the grouped listing, whose section headings already
+    say it -- but on its own, as the default line or an ambiguity list, the mode
+    is the first thing worth knowing about a file."""
+    try:
+        rel = path.relative_to(CAPTURE_ROOT)
+    except ValueError:
+        rel = path
+    stat = path.stat()
+    when = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M")
+    mode = f"{capture_mode(path):<6} " if with_mode else ""
+    return f"{mode}{str(rel):<50} {when}  {stat.st_size / 1e6:6.2f} MB"
+
+
+def resolve_typed_name(text, candidates, numbered=None):
+    """A typed path, a bare filename, a unique fragment of one, or a list number.
+
+    Typing the whole path after a recording session is tedious and easy to get
+    wrong, and the interesting part of these names is the timestamp -- so
+    "014914" is enough as long as it picks out exactly one file.
+
+    `numbered` is the shortened list the picker actually printed, which is what
+    a typed number has to index into; name and fragment matching still runs
+    against the full `candidates`, so an older capture that did not make the
+    printed list is reachable by name."""
+    text = text.strip().strip('"').strip("'")
+    if not text:
+        return None
+
+    numbered = candidates if numbered is None else numbered
+    if text.isdigit() and 1 <= int(text) <= len(numbered):
+        return numbered[int(text) - 1]
+
+    path = Path(text)
+    if path.is_file():
+        return path
+    if not path.is_absolute() and (CAPTURE_ROOT / path).is_file():
+        return CAPTURE_ROOT / path
+
+    exact = [c for c in candidates if c.name.lower() == text.lower()]
+    if exact:
+        return exact[0]
+
+    partial = [c for c in candidates if text.lower() in c.name.lower()]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        print(f"  {text!r} matches {len(partial)} files -- be more specific:")
+        for c in partial[:10]:
+            print(f"    {describe(c)}")
+    else:
+        print(f"  no file matching {text!r}.")
+    return None
+
+
+def listing_order(captures, per_mode=8):
+    """Display order for the picker: the PLOT recordings, then the SERIAL logs,
+    each newest first, trimmed to the most recent `per_mode` of either.
+
+    Grouped rather than one flat newest-first list because the two are answers
+    to different questions -- "how did the run go" vs "what did the firmware
+    say" -- and a session mixes them, so a flat list interleaves the two and
+    makes you read the extension of every line to find the one you want.
+
+    Returned as one list because the numbers the picker prints are indices into
+    it: what you read is what you type."""
+    plot   = [c for c in captures if capture_mode(c) == "PLOT"]
+    serial = [c for c in captures if capture_mode(c) == "SERIAL"]
+    return plot[:per_mode] + serial[:per_mode], len(plot), len(serial)
+
+
+def pick_csv():
+    """Menu shown when no capture was given on the command line."""
+    found = find_captures()
+    newest = found[0] if found else None
+    captures, n_plot, n_serial = listing_order(found)
+
+    # Piped or redirected: input() would raise EOFError on the first prompt, so
+    # fail the way argparse would have.
+    if not sys.stdin.isatty():
+        sys.exit("No CSV given, and stdin is not a terminal to ask on. "
+                 "Pass the file as an argument.")
+
+    print("\nWhich file?")
+    if newest:
+        print(f"  d  default -- newest capture: {describe(newest)}")
+    else:
+        print(f"  d  default -- (nothing found under {TELEMETRY_DIR})")
+    print("  f  file    -- type a name, path, or list number")
+    print("  q  quit")
+
+    while True:
+        try:
+            raw = input("choice [d]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            sys.exit("\nCancelled.")
+        choice = raw.lower() or "d"
+
+        if choice in ("q", "quit", "exit"):
+            sys.exit("Cancelled.")
+
+        if choice in ("d", "default"):
+            if newest:
+                return newest
+            print(f"  nothing to default to -- no capture under {CAPTURE_ROOT}."
+                  f" Use f and give a path.")
+            continue
+
+        if choice in ("f", "file"):
+            if captures:
+                print(f"\n  Recordings under {CAPTURE_ROOT}:")
+                shown = 0
+                for label, total in (("PLOT   -- live plotters, comma csv", n_plot),
+                                     ("SERIAL -- terminal_wifi.py, tab log", n_serial)):
+                    listed = [c for c in captures
+                              if capture_mode(c) == label.split()[0]]
+                    if not listed:
+                        continue
+                    print(f"\n  {label}")
+                    for c in listed:
+                        shown += 1
+                        print(f"   {shown:>2}. {describe(c, with_mode=False)}")
+                    if total > len(listed):
+                        print(f"       ... and {total - len(listed)} older "
+                              f"(reachable by name)")
+            try:
+                text = input("file: ")
+            except (EOFError, KeyboardInterrupt):
+                sys.exit("\nCancelled.")
+            hit = resolve_typed_name(text, found, numbered=captures)
+            if hit:
+                return hit
+            continue
+
+        # A path typed straight at the menu, rather than pressing f first. Only
+        # worth guessing at if it looks like a filename -- a mistyped menu key
+        # should get the menu's own error, not a file-search one.
+        if (any(ch in raw for ch in "./\\")
+                or raw.lower().endswith(CAPTURE_SUFFIXES)):
+            hit = resolve_typed_name(raw, found, numbered=captures)
+            if hit:
+                return hit
+            continue
+        print("  answer d, f or q.")
 
 
 # ---------------------------------------------------------------------------
@@ -530,7 +745,10 @@ def refresh(axes, armed_proxy=None, xlim=None, show_legend=True):
 def main():
     p = argparse.ArgumentParser(
         description="Plot a saved Cubli telemetry CSV (edge or corner).")
-    p.add_argument("csv", nargs="?", help="path to the CSV file")
+    p.add_argument("csv", nargs="?",
+                   help="path to the capture, or a filename/timestamp fragment "
+                        "of one under telemetry/. Omit it to be asked "
+                        "(d = newest recording, f = pick from a list)")
     p.add_argument("--cols", default=None,
                    help="comma-separated columns and/or group names; "
                         "omit for the interactive checkbox picker")
@@ -566,12 +784,19 @@ def main():
                   "in the box and press 'save')")
         return
 
-    if not args.csv:
-        p.error("the following arguments are required: csv")
+    if args.csv:
+        path = Path(args.csv)
+        if not path.is_file():
+            # A bare timestamp or filename typed after the flags should work the
+            # same way it does in the picker, instead of "File not found".
+            hit = resolve_typed_name(args.csv, find_captures())
+            if hit is None:
+                sys.exit(1)      # resolve_typed_name already said what it tried
+            path = hit
+    else:
+        path = pick_csv()
 
-    path = Path(args.csv)
-    if not path.is_file():
-        sys.exit(f"File not found: {path}")
+    print(f"Opening {path}")
 
     rows, spec, groups, derived = load_rows(path)
 

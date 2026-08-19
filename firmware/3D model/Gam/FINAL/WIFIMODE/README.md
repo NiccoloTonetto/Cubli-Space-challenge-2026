@@ -363,6 +363,15 @@ telemetry back onto USB live, without a reflash.
 
 ## After a run
 
-Both scripts save a timestamped CSV here when you close the plot window.
-Plot it with [`../plot_session_csv.py`](../plot_session_csv.py) — see the
-top-level README for usage.
+Nothing is written into this folder. Both live plotters save a timestamped CSV
+to [`../telemetry/plot/`](../telemetry/README.md) when you close the plot
+window, and `terminal_wifi.py` tees its session log to `../telemetry/serial/` —
+kept apart because they are different wire formats (comma vs tab) and only a
+Stage 5 serial log is wide enough to plot.
+
+```bash
+cd ..
+python plot_session_csv.py     # press d for the run you just did
+```
+
+See the top-level README for the plotter's flags.

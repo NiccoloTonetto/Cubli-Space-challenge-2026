@@ -15,8 +15,8 @@ this script will reject its lines outright.
 
 Same PLOTMODE CSV wire format, same three-panel live scrolling plot
 (tilt / torque / wheel), same behavior of saving the full session to a
-timestamped .csv next to this script when the window is closed -- only
-the transport is UDP rather than a COM port:
+timestamped .csv when the window is closed -- only the transport is UDP
+rather than a COM port:
 
     t_ms,theta_deg,theta_dot_dps,tau_Nm,tau_cmd_Nm,armed,gain_scale,wheel_omega_lp,wheel_pos,wheel_vel
 
@@ -24,8 +24,10 @@ The USB-side tooling (telemetry_python.py, telemetry_matlab.m) and the
 USB firmware in ../USBMODE/ are untouched and still work exactly as
 before -- this is a separate script for the separate WiFi build.
 
-After a session, ../plot_session_csv.py will open the saved CSV and let
-you plot whichever variables you want.
+The session lands in ../telemetry/plot/, alongside the corner plotter's
+recordings; terminal_wifi.py's SERIALMONITORMODE logs are kept apart in
+../telemetry/serial/. Afterwards run ../plot_session_csv.py with no
+arguments and press d -- its default is the newest recording.
 
 Serial is read on a background thread into a queue; the main thread only
 runs matplotlib's own FuncAnimation + plt.show() loop -- same reasoning as
@@ -60,7 +62,7 @@ Usage:
     4. In the terminal (not the plot window), type commands like a1, g0.5,
        o-2.3, t0, x1 and press Enter to send them.
     5. Close the window when you're done -- the full session is saved to
-       a timestamped .csv file next to this script.
+       ../telemetry/plot/telemetry_<stamp>.csv.
 """
 
 import csv
@@ -82,7 +84,11 @@ NUM_COLS = 10
 WINDOW_S = 10        # seconds visible in the scrolling plot
 REDRAW_MS = 50       # plot redraw period (~20 fps)
 HEARTBEAT_INTERVAL_S = 0.1   # keep well under the firmware's kLinkTimeoutMs (300 ms)
-OUT_DIR = Path(__file__).resolve().parent
+
+# Every recording in the FINAL tree lands under FINAL/telemetry/, split by the
+# mode that wrote it: PLOTMODE csv here, SERIALMONITORMODE logs from
+# terminal_wifi.py next door in ../telemetry/serial/.
+OUT_DIR = Path(__file__).resolve().parent.parent / "telemetry" / "plot"
 
 COL_NAMES = ["t_ms", "theta_deg", "theta_dot_dps", "tau_Nm", "tau_cmd_Nm",
              "armed", "gain_scale", "wheel_omega_lp", "wheel_pos", "wheel_vel"]
@@ -313,12 +319,15 @@ def main():
     rows = log["rows"]
     if rows:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
         out_file = OUT_DIR / f"telemetry_{stamp}.csv"
         with out_file.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(COL_NAMES)
             writer.writerows(rows)
         print(f"Saved {len(rows)} samples to {out_file}")
+        # No filename to retype: the plotter's default is the newest recording.
+        print("Plot it with:  python ../plot_session_csv.py   (press d)")
     else:
         print("No data captured -- nothing saved.")
 

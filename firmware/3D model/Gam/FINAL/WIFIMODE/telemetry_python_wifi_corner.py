@@ -59,9 +59,12 @@ h1/h0 for halt; that is the one grammar difference between them.
 'x' packets never reach the Teensy at all -- xiao_teensy_bridge.ino
 consumes them to switch its own mode.
 
-The session is saved to a timestamped .csv next to this script when the
-plot window is closed. ../plot_session_csv.py will then open that file
-and let you plot whichever variables you want.
+The session is saved to a timestamped .csv in ../telemetry/plot/ when the
+plot window is closed -- that folder holds the PLOTMODE recordings from
+both live plotters, with terminal_wifi.py's SERIALMONITORMODE logs kept
+separately in ../telemetry/serial/. Run ../plot_session_csv.py with no
+arguments afterwards and press d: its default is the newest recording,
+which is the one you just made.
 
 Requires: pip install matplotlib   (no pyserial needed -- plain UDP socket)
 
@@ -73,7 +76,8 @@ Usage:
     3. Run this script. The window opens once the XIAO has heard the
        first heartbeat and starts relaying telemetry.
     4. Type commands in the terminal (not the plot window).
-    5. Close the window when done -- the session is written to CSV.
+    5. Close the window when done -- the session is written to
+       ../telemetry/plot/telemetry_corner_<stamp>.csv.
 """
 
 import csv
@@ -96,7 +100,14 @@ WINDOW_S = 10        # seconds visible in the scrolling plot
 REDRAW_MS = 50       # plot redraw period (~20 fps)
 HEARTBEAT_INTERVAL_S = 0.1   # keep well under the firmware's kLinkTimeoutMs (300 ms)
 ARM_GATE_DEG = 0.5           # matches kArmGate in CornerBalance_WiFi.ino
-OUT_DIR = Path(__file__).resolve().parent
+
+# Every recording in the FINAL tree lands under FINAL/telemetry/, split by the
+# mode that wrote it: PLOTMODE csv here, SERIALMONITORMODE logs from
+# terminal_wifi.py next door in ../telemetry/serial/. Keeping them apart means
+# a directory listing answers "which of these can I plot?" on its own -- these
+# are comma-delimited and always 21 columns, those are tab-delimited and
+# whatever width their bring-up stage emits.
+OUT_DIR = Path(__file__).resolve().parent.parent / "telemetry" / "plot"
 
 COL_NAMES = [
     "t_ms",
@@ -345,13 +356,15 @@ def main():
     rows = log["rows"]
     if rows:
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
         out_file = OUT_DIR / f"telemetry_corner_{stamp}.csv"
         with out_file.open("w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(COL_NAMES)
             writer.writerows(rows)
         print(f"Saved {len(rows)} samples to {out_file}")
-        print(f"Plot it with:  python ../plot_session_csv.py \"{out_file.name}\"")
+        # No filename to retype: the plotter's default is the newest recording.
+        print("Plot it with:  python ../plot_session_csv.py   (press d)")
     else:
         print("No data captured -- nothing saved.")
 

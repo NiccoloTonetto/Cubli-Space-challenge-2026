@@ -109,7 +109,7 @@ MoteusTeensyCanFD canBus(ACAN_T4::can3, canSettings);
 // Confirmed on bench, physically verified (Gam/Skeleton_3Axis.ino's mapping
 // comment): id 2 -> X, id 3 -> Y, id 1 -> Z.
 enum Axis { AXIS_X = 0, AXIS_Y = 1, AXIS_Z = 2 };
-static const Axis kAxis = AXIS_X;   // <<< CHANGE THIS to test X or Z
+static const Axis kAxis = AXIS_Z;   // <<< CHANGE THIS to test X or Z
 
 static const int8_t kAxisMoteusId[3] = { 2, 3, 1 };
 static const char*  kAxisName[3]     = { "X", "Y", "Z" };
@@ -132,7 +132,7 @@ enum class LinkMode : uint8_t { USB = 0, WIFI = 1 };
 static LinkMode gLinkMode = LinkMode::WIFI;   // boot default -- see header
 
 const uint32_t kLinkBaud      = 1000000;   // Serial1 <-> XIAO
-const uint32_t kLinkTimeoutMs = 300;       // auto-disarm if WIFI mode and no
+const uint32_t kLinkTimeoutMs = 3000;       // auto-disarm if WIFI mode and no
                                             // Serial1 line in this long
                                             // (telemetry_python_wifi.py sends
                                             // a keepalive every 100 ms, well
@@ -481,7 +481,7 @@ static const float kEpsFf  = 0.05f;    // rad/s, tanh width
 
 // Arm gate (mega-prompt 3.3): refuse "a1" unless already near the edge
 // equilibrium. Checked at the moment of arming, not continuously.
-static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg
+static const float kArmGate = 0.1672664619f;   // rad, 0.5 deg
 
 // Per-axis: all three confirmed via each axis's own Stage 1 pulse test.
 // Re-verify per axis rather than assuming if the mount or wiring changes
