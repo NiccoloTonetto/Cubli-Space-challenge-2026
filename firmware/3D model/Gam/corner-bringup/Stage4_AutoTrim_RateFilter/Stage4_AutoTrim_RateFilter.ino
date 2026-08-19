@@ -30,12 +30,27 @@
 // keeping that energy out of the gain in the first place: a first-order
 // low-pass on the rate signal, corner frequency 15-25 Hz, is invisible to
 // a 1.3 Hz control loop (at 20 Hz corner the added phase lag AT 1.3 Hz is
-// ~3.7 deg, negligible against a 70 deg phase margin) but gives 20-30 dB
-// of attenuation at 35 Hz. Nothing else about the control law changes --
-// Kp stays exactly as shipped.
+// ~3.7 deg, negligible against a 70 deg phase margin). Nothing else about
+// the control law changes -- Kp stays exactly as shipped.
+//
+// CORRECTION 2026-08-19 (see docs/testing/Corner-RateFilter-and-Edge-
+// Hardware-Tests-2026-08-19.md Section 2): an earlier version of this
+// comment claimed "20-30 dB of attenuation at 35 Hz" for the 20 Hz corner
+// above. That's wrong -- measured attenuation of the real ~30 Hz mode on
+// hardware is only ~6 dB (Welch PSD, matches the first-order formula
+// sqrt(1+(f/fc)^2) exactly: ~1.8x amplitude at f=30Hz, fc=20Hz). A
+// first-order filter CANNOT give both "negligible lag at 1.3 Hz" and
+// "20-30 dB at 30-35 Hz" -- those two targets are less than 5 octaves
+// apart and a first order only rolls off 6 dB/octave; reaching 20-30 dB
+// at 30 Hz would need fc of order 1-3 Hz, which puts 40-60 deg of lag
+// back at 1.3 Hz. The filter IS real (measured ~45% RMS reduction on
+// |om|, visibly smoother wheel behavior) -- it just takes the edge off
+// the mode rather than killing it. A steeper filter (2nd-order, or a
+// notch at the measured peak) would be needed to do better without this
+// trade-off; the corner-frequency knob alone can't get there.
 //
 // IMPLEMENTATION: a separate w_filt[3], NOT a change to w_b[3] itself.
-// w_b (raw, from attitudeUpdate()) still drives ghat propagation and every
+// w_b (raw, from attitudeUpdate()) still drives that propagation and every
 // safety check (arm gate via phi, the isfinite() trip checks) unfiltered
 // and un-delayed -- filtering those would add lag to exactly the signals
 // that need to react fastest. w_filt only replaces w_b in commandWheels()'s
