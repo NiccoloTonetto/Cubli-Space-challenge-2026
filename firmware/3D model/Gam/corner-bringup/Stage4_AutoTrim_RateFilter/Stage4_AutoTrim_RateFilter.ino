@@ -66,12 +66,16 @@
 // 1e-3), so don't assume "higher k_a = faster" and tune past this value
 // by feel without re-measuring.
 //
-// NOT changed here: the Kp gain matrix itself. hw-run-analysis.md
-// references gains computed for a new plant (mass 1.633 kg, plus a new
-// corner-to-housing strut) -- those numbers are NOT in this file. kCorners
-// below is still the OLD (1.5668 kg, no strut) table from cubli_gains.h,
-// same one hw-run-analysis.md's own 373.5s run used successfully. Replace
-// it once the new per-corner Kp[3][9]/gB/ell/Sg/lambda/theta_eq are
+// UPDATE 2026-08-19: corner [-1,-1,-1]'s Kp below is now the re-derived
+// matrix for the new plant (mass 1.633 kg, plus a new corner-to-housing
+// strut) -- user-supplied. The OTHER SEVEN corners are still the OLD
+// (1.5668 kg, no strut) table from cubli_gains.h, same one hw-run-
+// analysis.md's own 373.5s run used successfully -- so this table is a
+// MIX of two plant generations, not internally consistent corner-to-
+// corner. [-1,-1,-1]'s own gB/ell/Sg/lambda/theta_eq were not part of
+// this update and are still the old values -- see that entry's own
+// comment for what that risks (a trim-clamp margin question). Replace
+// the remaining seven corners' Kp[3][9]/gB/ell/Sg/lambda/theta_eq once
 // available -- see the TODO at the table below.
 //
 // ---------------------------- WHAT AND WHY ---------------------------------
@@ -389,21 +393,35 @@ struct CornerCandidate {
                      // Trim.md S4's "log trim continuously" guard).
 };
 
-// >>> TODO: STALE PLANT. This table is still the 1.5668 kg / no-strut
-// export from cubli_gains.h (2026-08-14). hw-run-analysis.md references
-// gains re-derived for the CURRENT plant: mass 1.633 kg, plus a new rigid
-// corner-to-housing strut. This file's own rate-filter/k_a fixes were
-// verified against the OLD table (that's what produced the 373.5 s run in
-// the first place, so it's a legitimate baseline to tune the new fixes
-// against) -- but do not treat this table as "good enough to ship" just
-// because it flies. Swap in the new per-corner gB/Kp[3][9]/ell/Sg/lambda/
-// theta_eq the moment they're available, same 8-entry shape as below.
+// >>> TODO: MIXED-GENERATION PLANT. Corner [-1,-1,-1]'s Kp below was
+// UPDATED 2026-08-19 for mass 1.633 kg + the new corner-to-housing strut
+// (user-supplied); the OTHER SEVEN corners are still the 1.5668 kg /
+// no-strut export from cubli_gains.h (2026-08-14). This table is NOT
+// internally consistent across corners -- fine for continued single-
+// corner [-1,-1,-1] bring-up (this file's rate-filter/k_a fixes were
+// verified against the old table, a legitimate baseline to tune the new
+// Kp against), but do not resolve onto or trust any OTHER corner's
+// numbers until they're re-derived the same way. [-1,-1,-1]'s own
+// gB/ell/Sg/lambda/theta_eq were NOT provided with the new Kp and are
+// still the old (pre-strut) values -- see that entry's own comment.
+// Swap in the remaining seven corners' gB/Kp[3][9]/ell/Sg/lambda/theta_eq
+// the moment they're available, same 8-entry shape as below.
 static const CornerCandidate kCorners[8] = {
-  { "[-1,-1,-1]"  // lean 0.797 deg vs body diagonal, ell 122.84 mm, Sg 1.8875, lambda 8.2572
+  { "[-1,-1,-1]"  // Kp UPDATED 2026-08-19 for mass 1.633 kg + new corner-to-
+                  // housing strut (user-supplied). gB/ell/Sg/lambda/theta_eq
+                  // BELOW ARE STILL THE OLD VALUES (0.797 deg lean, 122.84mm,
+                  // Sg 1.8875, lambda 8.2572, pre-strut/1.5668 kg) -- not
+                  // provided with the new Kp, see the TODO above kCorners.
+                  // Strut note as given: "pole runs 4.49 deg off the
+                  // balancing diagonal, a compression member straight down
+                  // the load path" -- IF that is this corner's new theta_eq,
+                  // it's a ~3.7 deg shift trim's +/-2 deg clamp (kTrimMax)
+                  // cannot fully absorb; watch for trim pinned at the clamp
+                  // with residual tilt on the bench before trusting this.
     , { -0.571549475f, -0.588645577f, -0.571688354f }
-    , { { -6.9157443f, 3.39226651f, 3.42117763f, -0.834802926f, 0.420730621f, 0.42704013f, -0.000700236589f, 0.00623514736f, 0.00621826435f },  // wheel X
-        { 3.51941299f, -6.8296299f, 3.51364994f, 0.412131369f, -0.848057508f, 0.411711216f, 0.00382628222f, -0.00316504063f, 0.00381609239f },  // wheel Y
-        { 3.42913675f, 3.39467001f, -6.92366505f, 0.426502436f, 0.419758797f, -0.837698817f, 0.00606757682f, 0.00607034843f, -0.000870343472f } } // wheel Z
+    , { { -7.0685f, 3.4801f, 3.4675f, -0.8446f, 0.4235f, 0.4244f, -0.000998f, 0.006001f, 0.005931f },  // wheel X
+        { 3.5743f, -6.9184f, 3.5758f, 0.4173f, -0.8435f, 0.4177f, 0.004252f, -0.002662f, 0.004252f },  // wheel Y
+        { 3.4703f, 3.4844f, -7.0670f, 0.4242f, 0.4237f, -0.8452f, 0.005879f, 0.005948f, -0.001049f } } // wheel Z
     , 0.797f, 0.12284115f },
   { "[-1,-1,+1]"  // lean 3.170 deg vs body diagonal, ell 128.54 mm, Sg 1.9750, lambda 8.1212
     , { -0.546220303f, -0.562558711f, 0.620621562f }
@@ -975,12 +993,13 @@ void loop() {
 //
 // Next steps once this is trusted on real hardware:
 //   - Port the SAME rate-filter + k_a replacement into
-//     Stage5_AutoTrim_RateFilter.ino (in progress alongside this file --
-//     Stage 5 additionally has the real DISARM/OMEGA_CAP trip policy and
-//     gMaxOmega/gTaperStart; w_filt must stay OUT of those trip checks,
+//     Stage5_AutoTrim_RateFilter.ino -- done, same mechanism (Stage 5
+//     additionally has the real DISARM/OMEGA_CAP trip policy and
+//     gMaxOmega/gTaperStart; w_filt is kept OUT of those trip checks,
 //     same as it's kept out of this file's isfinite()/arm-gate checks).
-//   - Drop in the real Kp[3][9]/gB/ell/Sg/lambda/theta_eq per-corner
-//     table once available for the new plant (mass 1.633 kg + strut) --
+//   - Drop in the real Kp[3][9]/gB/ell/Sg/lambda/theta_eq for the
+//     remaining SEVEN corners once available for the new plant (mass
+//     1.633 kg + strut) -- corner [-1,-1,-1]'s Kp is done (2026-08-19),
 //     see the TODO above kCorners. Fix 4.2 ("reduce qr") needs the
 //     re-derived gain matrix itself, not something this file can compute.
 //   - EEPROM/LittleFS persistence -- save gTrim once converged (see the

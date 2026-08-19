@@ -301,12 +301,26 @@ struct CornerCandidate {
                      // Trim.md S4's "log trim continuously" guard).
 };
 
+// TODO: corner [-1,-1,-1]'s Kp below was UPDATED 2026-08-19 for the new
+// plant (mass 1.633 kg + corner-to-housing strut); the other 7 corners are
+// still the old 1.5668 kg/no-strut values -- do not treat this table as
+// internally consistent across corners until they're all re-derived.
 static const CornerCandidate kCorners[8] = {
-  { "[-1,-1,-1]"  // lean 0.797 deg vs body diagonal, ell 122.84 mm, Sg 1.8875, lambda 8.2572
+  { "[-1,-1,-1]"  // Kp UPDATED 2026-08-19 for mass 1.633 kg + new corner-to-
+                  // housing strut (user-supplied). gB/ell/Sg/lambda/theta_eq
+                  // BELOW ARE STILL THE OLD VALUES (0.797 deg lean, 122.84mm,
+                  // Sg 1.8875, lambda 8.2572, pre-strut/1.5668 kg) -- not
+                  // provided with the new Kp, see the TODO above kCorners.
+                  // Strut note as given: "pole runs 4.49 deg off the
+                  // balancing diagonal, a compression member straight down
+                  // the load path" -- IF that is this corner's new theta_eq,
+                  // it's a ~3.7 deg shift trim's +/-2 deg clamp (kTrimMax)
+                  // cannot fully absorb; watch for trim pinned at the clamp
+                  // with residual tilt on the bench before trusting this.
     , { -0.571549475f, -0.588645577f, -0.571688354f }
-    , { { -6.9157443f, 3.39226651f, 3.42117763f, -0.834802926f, 0.420730621f, 0.42704013f, -0.000700236589f, 0.00623514736f, 0.00621826435f },  // wheel X
-        { 3.51941299f, -6.8296299f, 3.51364994f, 0.412131369f, -0.848057508f, 0.411711216f, 0.00382628222f, -0.00316504063f, 0.00381609239f },  // wheel Y
-        { 3.42913675f, 3.39467001f, -6.92366505f, 0.426502436f, 0.419758797f, -0.837698817f, 0.00606757682f, 0.00607034843f, -0.000870343472f } } // wheel Z
+    , { { -7.0685f, 3.4801f, 3.4675f, -0.8446f, 0.4235f, 0.4244f, -0.000998f, 0.006001f, 0.005931f },  // wheel X
+        { 3.5743f, -6.9184f, 3.5758f, 0.4173f, -0.8435f, 0.4177f, 0.004252f, -0.002662f, 0.004252f },  // wheel Y
+        { 3.4703f, 3.4844f, -7.0670f, 0.4242f, 0.4237f, -0.8452f, 0.005879f, 0.005948f, -0.001049f } } // wheel Z
     , 0.797f, 0.12284115f },
   { "[-1,-1,+1]"  // lean 3.170 deg vs body diagonal, ell 128.54 mm, Sg 1.9750, lambda 8.1212
     , { -0.546220303f, -0.562558711f, 0.620621562f }
