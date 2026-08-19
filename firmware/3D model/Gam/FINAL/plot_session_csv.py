@@ -221,11 +221,73 @@ CORNER_DERIVED = {
     "|rho|": ("rad/s", lambda r: (r[7] ** 2 + r[8] ** 2 + r[9] ** 2) ** 0.5),
 }
 
+# Stage4_AutoTrim.ino's telemetry -- the same 21 CORNER fields, in the same
+# order (every existing CORNER_DERIVED lambda above still works unmodified,
+# since they only index into columns 1-9), PLUS 5 automatic-trim columns
+# appended at the end. A separate format, not a superset match on width,
+# because load_rows() picks by EXACT field count -- see its docstring for
+# why a partial/wrong match is worse than a clear "unrecognized width" exit.
+CORNER_TRIM_COLS = CORNER_COLS + [
+    ("trim_x_deg", "deg"), ("trim_y_deg", "deg"), ("trim_z_deg", "deg"),
+    ("trim_com_mm", "mm"), ("trim_enabled", "flag"),
+]
+
+CORNER_TRIM_GROUPS = dict(CORNER_GROUPS)
+CORNER_TRIM_GROUPS["trim"] = ["trim_x_deg", "trim_y_deg", "trim_z_deg", "trim_com_mm"]
+CORNER_TRIM_GROUPS["all"] = CORNER_GROUPS["all"] + ["trim_x_deg", "trim_y_deg",
+                                                     "trim_z_deg", "trim_com_mm"]
+
+# corner-bringup/Stage5_AutoTrim.ino's telemetry. NOT built on CORNER_COLS
+# despite sharing its first 19 fields -- Stage5's 20th/21st columns are
+# "armed, trip_reason" where CORNER_COLS (matched to CornerBalance/
+# CornerBalance_WiFi, which are Stage4-shaped) has "armed, gain_scale".
+# Same width (21) as CORNER_COLS for that prefix, DIFFERENT meaning for
+# the last field -- exactly the ambiguity load_rows()'s width-only
+# detection cannot see, which is why this is registered as its own
+# distinct total width (33) rather than reusing CORNER_COLS's 21-column
+# prefix. Do not feed a Stage5-shaped 21-column-truncated capture through
+# the CORNER format by hand; its "gain_scale" column would actually be
+# trip_reason.
+CORNER_ENDURANCE_COLS = [
+    ("t_ms", None),
+    ("phi_x", "deg"), ("phi_y", "deg"), ("phi_z", "deg"),
+    ("om_x", "deg/s"), ("om_y", "deg/s"), ("om_z", "deg/s"),
+    ("rho_x", "rad/s"), ("rho_y", "rad/s"), ("rho_z", "rad/s"),
+    ("rho_x_lp", "rad/s"), ("rho_y_lp", "rad/s"), ("rho_z_lp", "rad/s"),
+    ("tau_x", "N*m"), ("tau_y", "N*m"), ("tau_z", "N*m"),
+    ("tau_cmd_x", "N*m"), ("tau_cmd_y", "N*m"), ("tau_cmd_z", "N*m"),
+    ("armed", "flag"),
+    ("trip_reason", "flag"),
+    ("trim_x_deg", "deg"), ("trim_y_deg", "deg"), ("trim_z_deg", "deg"),
+    ("trim_com_mm", "mm"), ("trim_enabled", "flag"),
+    ("temp_x", "degC"), ("temp_y", "degC"), ("temp_z", "degC"),
+    ("sat_duty_x", "frac"), ("sat_duty_y", "frac"), ("sat_duty_z", "frac"),
+    ("loop_overrun_count", "count"),
+]
+
+CORNER_ENDURANCE_GROUPS = {
+    "tilt":   ["phi_x", "phi_y", "phi_z", "|phi|"],
+    "rates":  ["om_x", "om_y", "om_z"],
+    "wheels": ["rho_x", "rho_y", "rho_z", "rho_x_lp", "rho_y_lp", "rho_z_lp"],
+    "torque": ["tau_x", "tau_y", "tau_z", "tau_cmd_x", "tau_cmd_y", "tau_cmd_z"],
+    "trim":   ["trim_x_deg", "trim_y_deg", "trim_z_deg", "trim_com_mm"],
+    "endurance": ["temp_x", "temp_y", "temp_z",
+                  "sat_duty_x", "sat_duty_y", "sat_duty_z",
+                  "loop_overrun_count"],
+    "all":    ["phi_x", "phi_y", "phi_z", "|phi|", "om_x", "om_y", "om_z",
+               "rho_x_lp", "rho_y_lp", "rho_z_lp", "tau_x", "tau_y", "tau_z",
+               "trim_x_deg", "trim_y_deg", "trim_z_deg", "trim_com_mm",
+               "temp_x", "temp_y", "temp_z"],
+}
+
 # Stacking order for the by-unit subplot layout, most-watched first.
-UNIT_ORDER = ["deg", "deg/s", "rad/s", "N*m", "rev", "rev/s", "flag"]
+UNIT_ORDER = ["deg", "deg/s", "rad/s", "N*m", "rev", "rev/s", "mm",
+              "degC", "frac", "count", "flag"]
 UNIT_TITLES = {
     "deg": "Tilt", "deg/s": "Body rate", "rad/s": "Wheel speed",
     "N*m": "Torque", "rev": "Wheel position", "rev/s": "Wheel velocity",
+    "mm": "Trim (COM-equivalent)", "degC": "Controller temperature",
+    "frac": "Saturation duty", "count": "Loop overrun count",
     "flag": "Armed / gain",
 }
 
@@ -568,9 +630,17 @@ def load_rows(path):
     elif width == len(CORNER_COLS):
         spec, groups, derived, kind = (CORNER_COLS, CORNER_GROUPS,
                                        CORNER_DERIVED, "CORNER")
+    elif width == len(CORNER_TRIM_COLS):
+        spec, groups, derived, kind = (CORNER_TRIM_COLS, CORNER_TRIM_GROUPS,
+                                       CORNER_DERIVED, "CORNER_TRIM")
+    elif width == len(CORNER_ENDURANCE_COLS):
+        spec, groups, derived, kind = (CORNER_ENDURANCE_COLS, CORNER_ENDURANCE_GROUPS,
+                                       CORNER_DERIVED, "CORNER_ENDURANCE")
     else:
         sys.exit(f"{path.name}: rows are {width} fields wide; expected "
-                 f"{len(EDGE_COLS)} (edge) or {len(CORNER_COLS)} (corner).")
+                 f"{len(EDGE_COLS)} (edge), {len(CORNER_COLS)} (corner), "
+                 f"{len(CORNER_TRIM_COLS)} (corner + auto-trim), or "
+                 f"{len(CORNER_ENDURANCE_COLS)} (corner + auto-trim + endurance).")
 
     rows, skipped = [], 0
     for parts in raw_lines:
