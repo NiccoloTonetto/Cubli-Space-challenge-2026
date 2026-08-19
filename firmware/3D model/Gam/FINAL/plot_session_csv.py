@@ -237,6 +237,23 @@ CORNER_TRIM_GROUPS["trim"] = ["trim_x_deg", "trim_y_deg", "trim_z_deg", "trim_co
 CORNER_TRIM_GROUPS["all"] = CORNER_GROUPS["all"] + ["trim_x_deg", "trim_y_deg",
                                                      "trim_z_deg", "trim_com_mm"]
 
+# Stage4_AutoTrim_RateFilter.ino's telemetry -- CORNER_TRIM_COLS's 26 fields,
+# same order, PLUS the 3 filtered-rate columns hw-run-analysis.md's fix 4.1
+# added (om_x/y/z_filt_dps in the wire header). Named "om_x_filt" (dropping
+# the wire's "_dps" suffix) to match how om_x/phi_x already drop theirs here,
+# and placed in the "rates" group next to om_x/y/z on purpose -- the whole
+# point of plotting them together is seeing the raw-vs-filtered gap that
+# is this fix's own evidence of the 35 Hz mode it targets.
+CORNER_TRIM_FILT_COLS = CORNER_TRIM_COLS + [
+    ("om_x_filt", "deg/s"), ("om_y_filt", "deg/s"), ("om_z_filt", "deg/s"),
+]
+
+CORNER_TRIM_FILT_GROUPS = dict(CORNER_TRIM_GROUPS)
+CORNER_TRIM_FILT_GROUPS["rates"] = CORNER_TRIM_GROUPS["rates"] + [
+    "om_x_filt", "om_y_filt", "om_z_filt"]
+CORNER_TRIM_FILT_GROUPS["all"] = CORNER_TRIM_GROUPS["all"] + [
+    "om_x_filt", "om_y_filt", "om_z_filt"]
+
 # corner-bringup/Stage5_AutoTrim.ino's telemetry. NOT built on CORNER_COLS
 # despite sharing its first 19 fields -- Stage5's 20th/21st columns are
 # "armed, trip_reason" where CORNER_COLS (matched to CornerBalance/
@@ -279,6 +296,19 @@ CORNER_ENDURANCE_GROUPS = {
                "trim_x_deg", "trim_y_deg", "trim_z_deg", "trim_com_mm",
                "temp_x", "temp_y", "temp_z"],
 }
+
+# Stage5_AutoTrim_RateFilter.ino's telemetry -- CORNER_ENDURANCE_COLS's 33
+# fields, same order, PLUS the same 3 filtered-rate columns CORNER_TRIM_
+# FILT_COLS adds (see that entry's comment for the naming rationale).
+CORNER_ENDURANCE_FILT_COLS = CORNER_ENDURANCE_COLS + [
+    ("om_x_filt", "deg/s"), ("om_y_filt", "deg/s"), ("om_z_filt", "deg/s"),
+]
+
+CORNER_ENDURANCE_FILT_GROUPS = dict(CORNER_ENDURANCE_GROUPS)
+CORNER_ENDURANCE_FILT_GROUPS["rates"] = CORNER_ENDURANCE_GROUPS["rates"] + [
+    "om_x_filt", "om_y_filt", "om_z_filt"]
+CORNER_ENDURANCE_FILT_GROUPS["all"] = CORNER_ENDURANCE_GROUPS["all"] + [
+    "om_x_filt", "om_y_filt", "om_z_filt"]
 
 # Stacking order for the by-unit subplot layout, most-watched first.
 UNIT_ORDER = ["deg", "deg/s", "rad/s", "N*m", "rev", "rev/s", "mm",
@@ -633,14 +663,22 @@ def load_rows(path):
     elif width == len(CORNER_TRIM_COLS):
         spec, groups, derived, kind = (CORNER_TRIM_COLS, CORNER_TRIM_GROUPS,
                                        CORNER_DERIVED, "CORNER_TRIM")
+    elif width == len(CORNER_TRIM_FILT_COLS):
+        spec, groups, derived, kind = (CORNER_TRIM_FILT_COLS, CORNER_TRIM_FILT_GROUPS,
+                                       CORNER_DERIVED, "CORNER_TRIM_FILT")
     elif width == len(CORNER_ENDURANCE_COLS):
         spec, groups, derived, kind = (CORNER_ENDURANCE_COLS, CORNER_ENDURANCE_GROUPS,
                                        CORNER_DERIVED, "CORNER_ENDURANCE")
+    elif width == len(CORNER_ENDURANCE_FILT_COLS):
+        spec, groups, derived, kind = (CORNER_ENDURANCE_FILT_COLS, CORNER_ENDURANCE_FILT_GROUPS,
+                                       CORNER_DERIVED, "CORNER_ENDURANCE_FILT")
     else:
         sys.exit(f"{path.name}: rows are {width} fields wide; expected "
                  f"{len(EDGE_COLS)} (edge), {len(CORNER_COLS)} (corner), "
-                 f"{len(CORNER_TRIM_COLS)} (corner + auto-trim), or "
-                 f"{len(CORNER_ENDURANCE_COLS)} (corner + auto-trim + endurance).")
+                 f"{len(CORNER_TRIM_COLS)} (corner + auto-trim), "
+                 f"{len(CORNER_TRIM_FILT_COLS)} (corner + auto-trim + rate filter), "
+                 f"{len(CORNER_ENDURANCE_COLS)} (corner + auto-trim + endurance), or "
+                 f"{len(CORNER_ENDURANCE_FILT_COLS)} (corner + auto-trim + endurance + rate filter).")
 
     rows, skipped = [], 0
     for parts in raw_lines:
