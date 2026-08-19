@@ -556,6 +556,98 @@ already captured in the Fine-Tuning Test Plan's Test 6).
 
 ---
 
+## Hardware-stage update — corner-to-housing strut (2026-08-19)
+
+**Different source from Part 1–3 above** — not part of the original
+recovered pre-hardware design study. This is a re-derivation triggered by
+a real hardware change made during corner bring-up (after
+`hw-run-analysis.md`'s 373.5s run): a new rigid strut connecting corner
+`[-1,-1,-1]` to the electronics housing, added for structural rigidity,
+plus the resulting mass increase. Only this one corner has been
+re-derived so far — see "What's not re-derived yet" below.
+
+### Why the strut barely hurts — it's geometric, not incidental
+
+The pole runs 4.49° off the balancing diagonal — essentially straight
+down the load path (a compression member, not a bending one). That
+placement does two things that partly cancel: it adds mass, **and** it
+pulls the COM toward the balancing corner (shortening `ell`, which by
+itself would *help* Sg). A 4.2% mass increase costing only 2.7% on Sg is
+the result — bolted anywhere else on the cube, the same added mass would
+have cost 4–5%.
+
+| Corner `[-1,-1,-1]` | Before | After | Change |
+|---|---|---|---|
+| `m_total` | 1.5668 kg | 1.6330 kg | +66.2 g (+4.2%) |
+| `ell` | 122.84 mm | 121.08 mm | −1.76 mm (−1.4%) |
+| `Sg` | 1.8875 N·m | 1.9390 N·m | +2.7% |
+| `λ` | 8.2572 s⁻¹ | 8.3688 s⁻¹ | +1.4% |
+| `θ_eq` | 0.797° | 0.894° | +0.097° |
+
+### New gains, corner `[-1,-1,-1]`
+
+```
+Kp =
+  -7.0685   3.4801   3.4675  -0.8446   0.4235   0.4244  -0.000998   0.006001   0.005931
+   3.5743  -6.9184   3.5758   0.4173  -0.8435   0.4177   0.004252  -0.002662   0.004252
+   3.4703   3.4844  -7.0670   0.4242   0.4237  -0.8452   0.005879   0.005948  -0.001049
+```
+
+Robustness diagnostics on this gain set: `Ms = 0.999999`, slowest mode
+`−7.93 s⁻¹` (126.1 ms), `|K1|` spread 1.022, discrete `max|z| = 0.9813`,
+robust ±30% worst-case `−1.947`. Still momentum-limited: bound 4.81°
+against a torque bound of 5.02°.
+
+Worst-case recovery on this corner: **2.89°, down from 3.14°.**
+
+### Multi-corner picture — the finding that matters
+
+The recovery-envelope drop above is the smaller story. The COM shift
+moved `θ_eq` at all eight corners (the strut's mass and position affect
+the whole cube, not just its own corner), and the change was uneven:
+
+| corner | θ_eq | recovery | margin |
+|---|---|---|---|
+| `(-1,-1,-1)` | 0.894° | 2.89° | **+2.00°** |
+| `(-1,+1,-1)` | 3.521° | 2.83° | −0.69° |
+| `(-1,-1,+1)` | 3.935° | 2.75° | −1.19° |
+| `(+1,-1,-1)` | 3.940° | 2.73° | −1.21° |
+| `(+1,+1,-1)` | 3.811° | 2.48° | −1.33° |
+| `(+1,-1,+1)` | 3.274° | 2.41° | −0.86° |
+| `(-1,+1,+1)` | 3.820° | 2.40° | −1.42° |
+| `(+1,+1,+1)` | 0.780° | 2.52° | **+1.74°** |
+
+Before the strut, `θ_eq` ran 2.6–3.2° against a 2.8–3.0° recovery
+envelope — marginal but positive everywhere. The perpendicular COM
+offset moved 1.708 → 1.890 mm, and that pushed six of the eight corners'
+equilibrium tilt **past their own recovery envelope** (`θ_eq` now
+3.3–3.9° against 2.4–2.8° recovery — negative margin). Only the two ends
+of the primary body diagonal, `[-1,-1,-1]` and `[+1,+1,+1]`, are
+unaffected and still balance comfortably.
+
+**Corner balancing — the current pass criterion — is unaffected**: the
+cube only needs to balance on whichever single corner it's resting on,
+and that's `[-1,-1,-1]` for this rig. **Multi-corner locomotion is a
+different claim**, and this table says it's currently off the table on
+six of eight corners unless the pole is rebalanced or a counterweight
+goes on the opposite side. Worth deciding before it becomes a mission-
+capability assumption baked into later planning.
+
+### What's not re-derived yet
+
+Only corner `[-1,-1,-1]`'s `Kp`/`ell`/`Sg`/`λ`/`θ_eq` have been
+re-derived and (partially — `Kp`/`ell`/`θ_eq` only, not `gB`) carried
+into firmware (`corner-bringup/Stage4_AutoTrim*`, `Stage5_AutoTrim*` —
+see the `TODO: MIXED-GENERATION PLANT` comments above each file's
+`kCorners` table). `gB` (the 3-vector corner-resolution direction),
+plus the full `gB`/`Kp`/`ell` for the other seven corners, still need
+deriving before this table's margin figures can be treated as more than
+a planning input — the recovery/margin numbers above come from the
+source analysis, not a re-run against firmware-exact gains for corners
+2–8.
+
+---
+
 ## Edge balance — no simulation study found
 
 Searched this repo (`matlab/`, `docs/simulation/`) and the full project

@@ -69,9 +69,15 @@ clamp, in a closed loop that re-excites the mode every cycle.
 | 4.5 — adaptation gain default raised from `tau_a`=60s (`k_a`=2.922e-6) to `k_a`=1e-4 (~21x below the re-derived stability limit on the 15-state augmented model, converges in ~10s) | same two files, `k<value>` unchanged as the live override |
 | 4.2 — reduce `qr` (needs the actual re-derived `Kp` for the new plant, not implementable from the analysis alone) | **not done** — see "What's still open" below |
 
-Both `_RateFilter` files' `kCorners` table is still the OLD plant (mass
-1.5668 kg, no strut) pending the new gain matrix — see the TODO comment
-above the table in each file.
+**Update 2026-08-19: corner `[-1,-1,-1]`'s `Kp`/`ell`/`theta_eq` are now
+re-derived and applied** in all four AutoTrim-family files (mass 1.633 kg
++ the new strut). The other seven corners are still the old 1.5668 kg /
+no-strut values — every `kCorners` table is a MIXED-GENERATION table, see
+the TODO comment above each. Full numbers and the multi-corner finding
+that came with them (six of eight corners now have `theta_eq` beyond
+their own recovery envelope — see below) are in
+[`../../docs/dynamics/Cube-Performance-Envelope-Results.md`](../../../../docs/dynamics/Cube-Performance-Envelope-Results.md)'s
+"Hardware-stage update" section.
 
 ## Files this points at
 
@@ -85,13 +91,21 @@ above the table in each file.
 
 ## What's still open
 
-- **The `Kp[3][9]` gain matrix is stale in every corner-bringup file,
-  including both `_RateFilter` variants.** hw-run-analysis.md references
-  gains re-derived for a new plant (mass 1.633 kg, plus a new rigid
-  corner-to-housing strut) — those numbers aren't in the repo yet.
-  `kCorners` everywhere is still the old 1.5668 kg / no-strut table. Fix
-  4.2 ("reduce `qr`") specifically needs the re-derived matrix itself, not
-  something derivable from the rate-filter fix alone.
+- **Multi-corner locomotion is currently off the table on six of eight
+  corners** — the strut update above shifted `theta_eq` unevenly across
+  the cube; only `[-1,-1,-1]` and `[+1,+1,+1]` (the primary body-diagonal
+  ends) still have positive recovery margin. Single-corner balancing
+  (this project's current test scope) is unaffected. Full table in
+  [`../../docs/dynamics/Cube-Performance-Envelope-Results.md`](../../../../docs/dynamics/Cube-Performance-Envelope-Results.md).
+  Needs a decision (rebalance the pole, or a counterweight) before this
+  becomes a mission-capability assumption elsewhere.
+- **The `Kp[3][9]` gain matrix is stale for SEVEN of eight corners, in
+  every corner-bringup file** (corner `[-1,-1,-1]` is done, see above).
+  `gB` (the corner-resolution direction) is stale for `[-1,-1,-1]` too —
+  not provided alongside the new `Kp`, though low-risk given `theta_eq`
+  only moved +0.097°. Fix 4.2 ("reduce `qr`") specifically needs a
+  re-derived matrix, not something derivable from the rate-filter fix
+  alone — moot for `[-1,-1,-1]` now, still open for the other seven.
 - **Tests 5-7 are Stage 4/5 AutoTrim only, on ONE corner.** Per the Test
   Plan and every other file in this project: a result on one corner says
   nothing about another. Repeat for the other seven once this one is

@@ -306,22 +306,35 @@ struct CornerCandidate {
 // still the old 1.5668 kg/no-strut values -- do not treat this table as
 // internally consistent across corners until they're all re-derived.
 static const CornerCandidate kCorners[8] = {
-  { "[-1,-1,-1]"  // Kp UPDATED 2026-08-19 for mass 1.633 kg + new corner-to-
-                  // housing strut (user-supplied). gB/ell/Sg/lambda/theta_eq
-                  // BELOW ARE STILL THE OLD VALUES (0.797 deg lean, 122.84mm,
-                  // Sg 1.8875, lambda 8.2572, pre-strut/1.5668 kg) -- not
-                  // provided with the new Kp, see the TODO above kCorners.
-                  // Strut note as given: "pole runs 4.49 deg off the
-                  // balancing diagonal, a compression member straight down
-                  // the load path" -- IF that is this corner's new theta_eq,
-                  // it's a ~3.7 deg shift trim's +/-2 deg clamp (kTrimMax)
-                  // cannot fully absorb; watch for trim pinned at the clamp
-                  // with residual tilt on the bench before trusting this.
+  { "[-1,-1,-1]"  // UPDATED 2026-08-19 for mass 1.6330 kg (+4.2%) + the new
+                  // corner-to-housing strut (mounted 4.49 deg off the
+                  // balancing diagonal, near-axial -- "barely hurts" per
+                  // the source note). theta_eq 0.894 deg vs body diagonal
+                  // (was 0.797), ell 121.08 mm (was 122.84), Sg 1.9390
+                  // (was 1.8875), lambda 8.3688 s^-1 (was 8.2572).
+                  // Recovery 2.89 deg (was 3.14), margin +2.00 deg -- this
+                  // corner and its diagonal twin [+1,+1,+1] are still
+                  // safely inside their recovery envelope; the OTHER SIX
+                  // corners are NOT with this same pole (see Cube-
+                  // Performance-Envelope-Results.md) -- corner balancing
+                  // (this file's test) is unaffected, multi-corner
+                  // locomotion is not, until the pole is rebalanced or a
+                  // counterweight is added.
+                  // Robustness (source diagnostics): Ms=0.999999, slowest
+                  // mode -7.93 s^-1 (126.1 ms), |K1| spread 1.022, discrete
+                  // max|z|=0.9813, robust +/-30% worst -1.947, momentum-
+                  // limited bound 4.81 deg vs a 5.02 deg torque bound.
+                  // gB below is still the OLD direction (not provided
+                  // alongside Kp/ell) -- low risk given theta_eq only
+                  // moved +0.097 deg, well inside the trim clamp's
+                  // +/-2 deg, not the ~3.7 deg this comment used to warn
+                  // about before the pole's mounting angle (4.49 deg) got
+                  // mistaken for theta_eq.
     , { -0.571549475f, -0.588645577f, -0.571688354f }
     , { { -7.0685f, 3.4801f, 3.4675f, -0.8446f, 0.4235f, 0.4244f, -0.000998f, 0.006001f, 0.005931f },  // wheel X
         { 3.5743f, -6.9184f, 3.5758f, 0.4173f, -0.8435f, 0.4177f, 0.004252f, -0.002662f, 0.004252f },  // wheel Y
         { 3.4703f, 3.4844f, -7.0670f, 0.4242f, 0.4237f, -0.8452f, 0.005879f, 0.005948f, -0.001049f } } // wheel Z
-    , 0.797f, 0.12284115f },
+    , 0.894f, 0.12108f },
   { "[-1,-1,+1]"  // lean 3.170 deg vs body diagonal, ell 128.54 mm, Sg 1.9750, lambda 8.1212
     , { -0.546220303f, -0.562558711f, 0.620621562f }
     , { { -7.58488846f, 3.33574939f, -3.65192771f, -0.921932399f, 0.430031687f, -0.480414748f, 0.000473975349f, 0.00748626003f, -0.00814931281f },  // wheel X
