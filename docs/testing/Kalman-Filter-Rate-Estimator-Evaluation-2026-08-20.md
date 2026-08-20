@@ -253,6 +253,125 @@ baseline to debug against if it goes wrong. Do 0 → 1 → 2 in order; 3 is the
 maximum-rejection technique, but it's only a good idea once 0-2 have derisked
 inputs it depends on.
 
+## 6. Update — a hardware bug found and fixed (2026-08-20, later same day)
+
+Option 2 was built anyway (`Stage4_FixedOffset_Kalman.ino`, corner-bringup
+and its WiFi port), ahead of §5's own gating ("only if the tap test shows a
+stable, well-characterized mode"). First real-hardware runs found a genuine
+implementation bug, not a modeling-risk issue this doc already anticipated:
+`om_x/y/z_filt_dps` and `mode_x/y/z_dps` went to `nan` within ~10s of boot on
+every session, on both the USB and WiFi builds (the WiFi port is a byte-for-
+byte copy of the math, so this was latent in the original design, not
+introduced by porting). `commandWheels()`'s existing `isfinite(u)` check
+correctly caught the resulting NaN torque and disarmed — so no unsafe torque
+was ever commanded — but with nothing printed and no recovery path short of
+a reboot, which at the terminal looked exactly like "arming does nothing."
+
+**Root cause**: `f22 = 1 - 2*zeta*wn*dt` is the mode oscillator's `eta_dot`
+discrete pole. It's only inside the stable unit disk (`|f22| < 1`) for `dt`
+small relative to `wn`/`zeta` — at the upper end of this file's own
+live-settable range (e.g. `wn = 2*pi*45`, `zeta = 0.15`), `dt` as small as
+`0.01s` already pushes `|f22| > 1`. §2's Python validation never hit this
+because it replayed a fixed, uniform `dt` from real telemetry offline — it
+never saw the occasional large `dt` a live 500 Hz loop produces under real
+per-cycle load (CAN + SPI +, on the WiFi build, the radio bridge). One bad
+cycle is enough to blow up `x[2]`/`P` in a single step; nothing in the
+original code detected or recovered from that once it happened.
+
+**Fix, both firmware files, both defense-in-depth rather than a single
+point fix**:
+1. `updateModeKalman()` now clamps its own `dt` to 10 ms — tighter than
+   `loop()`'s general 0.5s stall-fallback, sized specifically for this
+   pole's stability rather than reusing the loop-level clamp meant for
+   every estimator in the file.
+2. Per-axis self-healing: if a state or covariance update produces a
+   non-finite value, that axis's Kalman state resets (same "detect
+   divergence, reset" pattern `attitudeUpdate()` already uses for
+   `ghat`/`bhat`'s `badCount` threshold) instead of staying NaN-locked
+   until a power cycle. Prints `# KF axis X reset (...)` when it fires, so
+   a recurrence is visible rather than silent.
+
+**What this doesn't change**: the §5 recommendation and its risk framing
+still hold — this was a numerical-stability bug in the *implementation*,
+not evidence about the *modeling* risk (whether an explicit mode state is
+trustworthy without the tap test). That risk is unchanged and the tap test
+is still the right prerequisite for trusting `gModeHz`/`gModeZeta` as
+anything more than a live-tunable starting guess.
+
+## 7. Update — a second, more fundamental instability found (2026-08-20, same day, field report)
+
+§6's fix shipped, and a field report came back: correct corner
+(`[-1,-1,-1]`), sub-1-degree placement at arm — ruling out both of the
+non-filter explanations first offered — and the cube still "goes
+absolutely bananas" on arm. §6 fixed a *symptom* (NaN-lock on an
+anomalous `dt` spike); this is the actual disease underneath it, and it
+does not need any timing anomaly to trigger.
+
+**Root cause**: the `(eta, eta_dot)` mode-oscillator block of `F` was
+integrated with forward Euler:
+`eta_{k+1} = eta_k + eta_dot_k*dt`,
+`eta_dot_{k+1} = eta_dot_k + (-wn²·eta_k - 2·zeta·wn·eta_dot_k)*dt`.
+Forward Euler applied to a lightly damped oscillator is only stable for
+`dt < 2·zeta/wn`. At this file's own compiled-in defaults
+(`gModeHz=35`, `gModeZeta=0.05`) that threshold is **0.46 ms** — 4.3x
+*smaller* than the loop's ordinary 2 ms period. Direct eigenvalue
+computation of the old `F` confirms it: `|eigenvalue| = 1.072` at
+`(35 Hz, zeta=0.05, dt=2ms)` — the `(eta, eta_dot)` state amplitude grew
+~7.2% *every* control cycle, doubling roughly every 20 ms, present at the
+loop's completely ordinary nominal `dt`, not just under a jitter spike.
+Checked numerically (not assumed) across the entire documented
+`n<Hz>`/`z<value>` sweep range — 25–45 Hz × 0.02–0.15 — every single
+combination is unstable at `dt = 2 ms`:
+
+| gModeHz | zeta=0.02 | zeta=0.05 | zeta=0.10 | zeta=0.15 |
+|---|---|---|---|---|
+| 25 Hz | 1.042 | 1.033 | 1.018 | 1.002 |
+| 30 Hz | 1.062 | 1.051 | 1.033 | 1.014 |
+| 35 Hz | 1.084 | 1.072 | 1.051 | 1.030 |
+| 40 Hz | 1.110 | 1.097 | 1.073 | 1.050 |
+| 45 Hz | 1.139 | 1.124 | 1.099 | 1.072 |
+
+(all `|eigenvalue| > 1`, i.e. unstable, at every entry). Because the
+filter runs continuously from boot regardless of arm state (by design —
+see the WiFi file's header), it can already be mid-blowup the moment
+`a1` is sent, dumping a large wrong `eta_dot` straight into `om_true`'s
+innovation right as the law engages. §6's self-heal kept catching this
+once a step went non-finite, but the instability regrew every cycle
+after each reset, so the wrong correction kept recurring rather than
+going away — consistent with a report of continuous, not one-shot,
+divergence.
+
+**Fix**: replace forward Euler for the `(eta, eta_dot)` block with the
+exact (zero-order-hold) discretization of a damped harmonic oscillator —
+the closed-form matrix exponential of `[[0,1],[-wn², -2·zeta·wn]]`:
+
+```
+wd    = wn * sqrt(1 - zeta^2)
+decay = exp(-zeta * wn * dt)
+f11 = decay * (cos(wd*dt) + (zeta*wn/wd) * sin(wd*dt))
+f12 = decay * (sin(wd*dt) / wd)
+f21 = decay * (-(wn^2/wd) * sin(wd*dt))
+f22 = decay * (cos(wd*dt) - (zeta*wn/wd) * sin(wd*dt))
+```
+
+That block's eigenvalues are `exp(-zeta*wn*dt)` exactly — strictly
+inside the unit disk for *any* `zeta > 0` and *any* `dt > 0`, by
+construction, not tuned for these particular defaults. `om_true`'s row
+(a pure random walk, `F` row `[1,0,0]`) is untouched. §6's `dt` clamp and
+per-axis self-heal are both kept as defense-in-depth (harmless, and the
+self-heal is still architecturally consistent with `attitudeUpdate()`'s
+pattern), but neither is load-bearing for stability anymore — this fix
+removes the actual defect rather than papering over it.
+
+**What this doesn't change**: same caveat as §6 — this is a second
+implementation bug, not new evidence on the modeling risk. The tap test
+is still the right prerequisite for trusting `gModeHz`/`gModeZeta` as
+more than a live-tunable starting guess; discrete process noise (`Qdiag`)
+is still the cruder, additive-per-step approximation flagged in §4, not
+a proper Van Loan discretization — a smaller, secondary refinement worth
+revisiting if the filter still looks off after this fix, but not what
+was causing "bananas."
+
 ## Related
 
 - `Notch Filter and Adaptive Control — Evaluation.md` — the document this

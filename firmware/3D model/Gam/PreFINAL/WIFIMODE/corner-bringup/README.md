@@ -22,6 +22,9 @@ The control law in every file here is a verbatim copy of its USB source. **Retun
 | 4 | [`../CornerBalance_WiFi/`](../CornerBalance_WiFi/) | 21 | full 9-state law + friction feedforward |
 | 4-AT | [`Stage4_AutoTrim_WiFi/`](Stage4_AutoTrim_WiFi/) | 26 | same law, manual `z1` tare replaced by **automatic trim** |
 | 4-ATF | [`Stage4_AutoTrim_RateFilter_WiFi/`](Stage4_AutoTrim_RateFilter_WiFi/) | 29 | 4-AT plus a **rate low-pass** on the om block, and a 34× faster trim |
+| 4-FO | [`Stage4_FixedOffset/`](Stage4_FixedOffset/) | 26 | 4-AT with trim **hardcoded** to its converged value, and **no arm gate** |
+| 4-FOF | [`Stage4_FixedOffset_RateFilter/`](Stage4_FixedOffset_RateFilter/) | 29 | 4-FO plus 4-ATF's rate low-pass |
+| 4-FOK | [`Stage4_FixedOffset_Kalman/`](Stage4_FixedOffset_Kalman/) | 32 | 4-FO with the low-pass replaced by a **mode-augmented Kalman filter** — *experimental* |
 | 5 | [`Stage5_Release_WiFi/`](Stage5_Release_WiFi/) | 21 | full law, **real** trip policy, latched reason |
 
 **Stage 4 is not in this folder and is not duplicated.** `../CornerBalance_WiFi/` already was the WiFi Stage 4 — it is the validated build with recorded sessions, and it is left exactly as it was. It is also the only stage with two ways to read it:
@@ -40,11 +43,26 @@ Stage 4-ATF is 4-AT plus the two fixes *hw-run-analysis.md* drew out of a 373.5 
 
 Its 29 fields are 4-AT's 26 plus `om_x_filt_dps om_y_filt_dps om_z_filt_dps`, printed next to the raw ones deliberately: the gap between the two is the only direct evidence the filter is doing anything. `d20` is still the rate to read it at — convergence is fast now, but the raw-vs-filtered comparison is much easier to eyeball slowly.
 
+### The fixed-offset family (4-FO / 4-FOF / 4-FOK)
+
+These three are the auto-trim builds with the adaptation **retired**. Trim already did its job: `perfect_equilibrium_2.log` (2026-08-20) held a converged `gTrim` for 132.41 s with per-axis std < 0.0012 °, which is a genuine fixed point rather than a value still drifting. That mean is now the compile-time `kPhiOffset`, and `gTrim`/`gKAdapt`/`updateTrim()`/`applyTrimGuards()` are gone with it. The trim five columns stay in the telemetry as constants (`trim_enabled` = 0 always) so the line keeps a width the analysis tools already know.
+
+Two consequences worth being explicit about:
+
+- **The offset goes stale on any mechanical change** — battery moved, cable re-routed, bolt re-torqued. Nothing in these files can detect that. Re-run the USB `Stage4_AutoTrim`, let it re-converge, and update `kPhiOffset`.
+- **The arm gate is gone.** `a1` arms from any tilt. The law is only validated for small angles (recovery envelope ~2.7–3.1 ° worst case), so placing the cube near equilibrium first is now operator discipline, not a code-enforced check. Over WiFi that leaves the link watchdog and `kMaxTilt`'s 25 ° trip as the only automatic protections — see the link-loss table below.
+
+4-FOK additionally replaces the first-order low-pass with a per-axis 3-state Kalman filter that carries the ~30–40 Hz structural mode as its **own state** (`n<Hz>` / `z<0-1>` sweep it live), and adds `mode_x_dps mode_y_dps mode_z_dps` for its estimate of that mode's contribution. It is **experimental and unvalidated** — the mode's real frequency has never been pinned down by a tap test, and observed peaks spread 29.7–41.0 Hz across three sessions. A wrong mode model is not neutral here: unlike a notch that simply stops helping off-frequency, this filter trusts its own model. Read the sketch header before flashing it.
+
+One WiFi-specific trap on 4-FOK: judging `mode_x/y/z_dps` needs sampling well above the mode, so **do not decimate it** — at `d20` you are looking at aliasing, not at the filter. Even `d2`'s 250 Hz arrives irregularly once the ~105 lines/s UDP ceiling bites, so treat a WiFi capture as qualitative and take anything you intend to FFT (including [`../../kalman_mode_hint.py`](../../kalman_mode_hint.py) input) over USB with `l0`.
+
 ---
 
 ## Command grammar
 
 Every stage keeps its USB command letters **byte-identical** — with two exceptions in the Stage 4 auto-trim builds that the transport forced, called out below. That was the point: the terminal should behave like the Serial Monitor, including what you type into it.
+
+The fixed-offset family has its own table further down; it fits none of these columns and, unlike the auto-trim builds, needed **no** remapping at all.
 
 | | Stage 1 | Stage 2 | Stage 3 | Stage 4-AT | Stage 4-ATF | Stage 5 |
 |---|---|---|---|---|---|---|
@@ -80,6 +98,22 @@ The USB `Stage4_AutoTrim` and `Stage4_AutoTrim_RateFilter` bind `x<0/1>` to the 
 
 Stage 4-ATF's third command, **`f<Hz>`**, did *not* have to move — `f` is free across every stage and the bridge relays it verbatim.
 
+### The fixed-offset stages keep every letter
+
+| | Stage 4-FO | Stage 4-FOF | Stage 4-FOK |
+|---|---|---|---|
+| arm / disarm | `a<0/1>` **(no gate)** | `a<0/1>` **(no gate)** | `a<0/1>` **(no gate)** |
+| gain scale | `g<0..1>` | `g<0..1>` | `g<0..1>` |
+| rate filter corner freq | — | `f<Hz>` | — |
+| mode natural freq | — | — | `n<Hz>` |
+| mode damping ζ | — | — | `z<0-1>` |
+| re-resolve corner | `c` | `c` | `c` |
+| halt | `h<0/1>` | `h<0/1>` | `h<0/1>` |
+
+Nothing moved, and the reason is the mechanism these files removed: the two collisions that forced 4-AT and 4-ATF to remap were both in the **trim machinery**, and there is no trim machinery here. Nothing is bound to `x`, and nothing is bound to `k`.
+
+That frees `n` and `z` — which 4-FOK then binds to its own, completely different meanings. **Do not read letters across from 4-ATF**: there `n` is the adaptation gain and `z` seeds trim; here `n` is the mode's natural frequency and `z` its damping ratio. Same keys, same folder, unrelated effects.
+
 ### The one legacy difference
 
 `../CornerBalance_WiFi/` predates this folder and binds `h` = keepalive, `p` = halt, `t` = link mode. It was not changed. It already accepts `k` as a keepalive alias, which is why `terminal_wifi.py` drives it and the four stages here without knowing which is which. If you drop into that sketch, remember halt is `p1`.
@@ -110,7 +144,7 @@ Only `[+1,+1,+1]` and `[-1,-1,-1]` are mechanically reachable; the other six cor
 
 ### Before the first armed run, on every stage
 
-Kill `terminal_wifi.py` while armed and confirm the board disarms within 300 ms. In WiFi mode the laptop is your disarm button, and the watchdog is what covers you when it disappears — but it is **not** the safety net. The physical stop/catch and the e-stop are.
+Kill `terminal_wifi.py` while armed and confirm the board disarms. The deadline is the stage's own `kLinkTimeoutMs`: **300 ms** on Stages 1, 2, 3 and 5, **3 s** on the whole Stage 4 family. In WiFi mode the laptop is your disarm button, and the watchdog is what covers you when it disappears — but it is **not** the safety net. The physical stop/catch and the e-stop are.
 
 | | on link loss |
 |---|---|
@@ -118,6 +152,7 @@ Kill `terminal_wifi.py` while armed and confirm the board disarms within 300 ms.
 | Stages 2, 3 | `gArmed = false` |
 | Stage 4-AT | `gArmed = false`, which also freezes trim adaptation — `updateTrim()` is gated on `gArmed`, so "do not learn from a dropped link" costs no extra state. The converged value is **kept**, not cleared |
 | Stage 4-ATF | same as 4-AT. The **rate filter is deliberately not** frozen or reset — it is a measurement filter, not learned state, so it keeps tracking `w_b` while disarmed and the om block sees a settled signal the moment you re-arm |
+| Stages 4-FO, 4-FOF, 4-FOK | `gArmed = false`. There is no trim to freeze, and the rate filter / Kalman filter are left running for the same reason 4-ATF's is. **Check this one first:** with the arm gate gone, this watchdog and `kMaxTilt` are the *only* automatic protections these three have |
 | Stage 5 | `gArmed = false`, and `trip_reason` is deliberately **left alone** — losing the radio is not something the cube did, and overwriting a latched tilt/omega/nan would destroy the evidence you need before re-arming |
 
 ---
@@ -126,7 +161,9 @@ Kill `terminal_wifi.py` while armed and confirm the board disarms within 300 ms.
 
 `terminal_wifi.py` tees everything received to `session_<tag>_<stamp>.log` in [`../../telemetry/serial/`](../../telemetry/README.md) (`--no-log` to skip) — the SERIALMONITORMODE half of the recordings folder, kept apart from the live plotters' PLOTMODE csv in `telemetry/plot/`. Because the header row is in the stream, [`../../plot_session_csv.py`](../../plot_session_csv.py) opens a **Stage 5** log directly — 21 columns, though it will label the last one `gain_scale` when it is really `trip_reason`. Run it with no arguments and press `f` to pick the log from a list.
 
-Stage 1's 13, Stages 2/3's 18, Stage 4-AT's 26 and Stage 4-ATF's 29 columns fall outside that script's 10/21 auto-detection. Those logs are raw records to read or post-process, which is what the bring-up stages want anyway — though 26 and 29 are both widths `plot_session_csv.py` knows (`CORNER_TRIM` / `CORNER_TRIM_FILT`), so passing one by name still works.
+Stage 1's 13, Stages 2/3's 18, the 26 of 4-AT and 4-FO, the 29 of 4-ATF and 4-FOF, and 4-FOK's 32 columns all fall outside that script's 10/21 auto-detection. Those logs are raw records to read or post-process, which is what the bring-up stages want anyway — though 26, 29 and 32 are all widths `plot_session_csv.py` knows (`CORNER_TRIM` / `CORNER_TRIM_FILT` / `CORNER_TRIM_KALMAN`), so passing one by name still works.
+
+A fixed-offset log is width-identical to its auto-trim twin, so **width alone will not tell you which build produced it** — read `trim_enabled`, which is 0 on every fixed-offset line and 1 on an adapting one, or check the boot block the log opens with.
 
 ---
 
