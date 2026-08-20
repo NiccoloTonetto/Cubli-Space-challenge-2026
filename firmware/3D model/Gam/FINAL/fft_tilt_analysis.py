@@ -115,16 +115,19 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from plot_session_csv import (   # noqa: E402  (path must be set up first)
     load_rows, EDGE_COLS, CORNER_COLS, CORNER_TRIM_COLS, CORNER_TRIM_FILT_COLS,
-    CORNER_ENDURANCE_COLS, CORNER_ENDURANCE_FILT_COLS, CORNER_DERIVED,
+    CORNER_TRIM_KALMAN_COLS, CORNER_ENDURANCE_COLS, CORNER_ENDURANCE_FILT_COLS,
+    CORNER_DERIVED,
 )
 
-# CORNER and its four extended formats (Stage4_AutoTrim.ino's TRIM, Stage4_
-# AutoTrim_RateFilter.ino's TRIM_FILT, Stage5_AutoTrim.ino's ENDURANCE, and
-# Stage5_AutoTrim_RateFilter.ino's ENDURANCE_FILT) all share the same first
-# 21 columns, so every derived formula below (which only indexes 1-9) and
-# every --channel option works unmodified on any of them -- only the width
-# used to tell them apart from EDGE differs.
+# CORNER and its five extended formats (Stage4_AutoTrim.ino's TRIM, Stage4_
+# AutoTrim_RateFilter.ino's TRIM_FILT, Stage4_FixedOffset_Kalman.ino's
+# TRIM_KALMAN, Stage5_AutoTrim.ino's ENDURANCE, and Stage5_AutoTrim_
+# RateFilter.ino's ENDURANCE_FILT) all share the same first 21 columns, so
+# every derived formula below (which only indexes 1-9) and every --channel
+# option works unmodified on any of them -- only the width used to tell
+# them apart from EDGE differs.
 CORNER_WIDTHS = (len(CORNER_COLS), len(CORNER_TRIM_COLS), len(CORNER_TRIM_FILT_COLS),
+                 len(CORNER_TRIM_KALMAN_COLS),
                  len(CORNER_ENDURANCE_COLS), len(CORNER_ENDURANCE_FILT_COLS))
 
 # ---------------------------------------------------------------------------

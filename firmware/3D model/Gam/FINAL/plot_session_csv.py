@@ -254,6 +254,26 @@ CORNER_TRIM_FILT_GROUPS["rates"] = CORNER_TRIM_GROUPS["rates"] + [
 CORNER_TRIM_FILT_GROUPS["all"] = CORNER_TRIM_GROUPS["all"] + [
     "om_x_filt", "om_y_filt", "om_z_filt"]
 
+# corner-bringup/Stage4_FixedOffset_Kalman.ino's telemetry --
+# CORNER_TRIM_FILT_COLS's 29 fields, same order, PLUS 3 columns
+# (mode_x/y/z_dps in the wire header) exposing the mode-augmented Kalman
+# filter's own estimate of the structural mode's contribution to the raw
+# rate (docs/testing/Kalman-Filter-Rate-Estimator-Evaluation-2026-08-20.md
+# Option 2) -- "om_x_filt" in this format is that filter's om_true output,
+# not a first-order low-pass. Grouped with "rates" alongside om_x/y/z and
+# om_x/y/z_filt for the same reason CORNER_TRIM_FILT_GROUPS does: the
+# point is comparing raw vs filtered vs the mode's own estimated
+# contribution in one view.
+CORNER_TRIM_KALMAN_COLS = CORNER_TRIM_FILT_COLS + [
+    ("mode_x", "deg/s"), ("mode_y", "deg/s"), ("mode_z", "deg/s"),
+]
+
+CORNER_TRIM_KALMAN_GROUPS = dict(CORNER_TRIM_FILT_GROUPS)
+CORNER_TRIM_KALMAN_GROUPS["rates"] = CORNER_TRIM_FILT_GROUPS["rates"] + [
+    "mode_x", "mode_y", "mode_z"]
+CORNER_TRIM_KALMAN_GROUPS["all"] = CORNER_TRIM_FILT_GROUPS["all"] + [
+    "mode_x", "mode_y", "mode_z"]
+
 # corner-bringup/Stage5_AutoTrim.ino's telemetry. NOT built on CORNER_COLS
 # despite sharing its first 19 fields -- Stage5's 20th/21st columns are
 # "armed, trip_reason" where CORNER_COLS (matched to CornerBalance/
@@ -666,6 +686,9 @@ def load_rows(path):
     elif width == len(CORNER_TRIM_FILT_COLS):
         spec, groups, derived, kind = (CORNER_TRIM_FILT_COLS, CORNER_TRIM_FILT_GROUPS,
                                        CORNER_DERIVED, "CORNER_TRIM_FILT")
+    elif width == len(CORNER_TRIM_KALMAN_COLS):
+        spec, groups, derived, kind = (CORNER_TRIM_KALMAN_COLS, CORNER_TRIM_KALMAN_GROUPS,
+                                       CORNER_DERIVED, "CORNER_TRIM_KALMAN")
     elif width == len(CORNER_ENDURANCE_COLS):
         spec, groups, derived, kind = (CORNER_ENDURANCE_COLS, CORNER_ENDURANCE_GROUPS,
                                        CORNER_DERIVED, "CORNER_ENDURANCE")
@@ -677,8 +700,10 @@ def load_rows(path):
                  f"{len(EDGE_COLS)} (edge), {len(CORNER_COLS)} (corner), "
                  f"{len(CORNER_TRIM_COLS)} (corner + auto-trim), "
                  f"{len(CORNER_TRIM_FILT_COLS)} (corner + auto-trim + rate filter), "
-                 f"{len(CORNER_ENDURANCE_COLS)} (corner + auto-trim + endurance), or "
-                 f"{len(CORNER_ENDURANCE_FILT_COLS)} (corner + auto-trim + endurance + rate filter).")
+                 f"{len(CORNER_TRIM_KALMAN_COLS)} (corner + auto-trim + mode-augmented "
+                 f"Kalman filter), {len(CORNER_ENDURANCE_COLS)} (corner + auto-trim + "
+                 f"endurance), or {len(CORNER_ENDURANCE_FILT_COLS)} (corner + auto-trim "
+                 f"+ endurance + rate filter).")
 
     rows, skipped = [], 0
     for parts in raw_lines:
