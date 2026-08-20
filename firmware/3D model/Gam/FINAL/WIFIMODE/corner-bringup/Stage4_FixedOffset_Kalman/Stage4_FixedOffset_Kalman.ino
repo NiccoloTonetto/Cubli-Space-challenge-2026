@@ -527,21 +527,64 @@ void initModeKalman() {
 //      already uses for ghat/bhat (see its badCount threshold above) --
 //      so a bad cycle costs one axis's convergence, not a permanent
 //      NaN-lock requiring a power cycle.
+// BUG FOUND 2026-08-20 on real hardware, PART 2 (same day, after the
+// part-1 fix above shipped and a field report came back: correct corner
+// [-1,-1,-1], sub-1-degree placement, still "goes absolutely bananas").
+// Part 1 fixed a SYMPTOM (NaN-lock on an anomalous dt spike); this is
+// the actual disease. F's eta/eta_dot rows above were forward-Euler --
+// eta_{k+1}=eta_k+eta_dot_k*dt, eta_dot_{k+1}=eta_dot_k+(-wn^2*eta_k
+// -2*zeta*wn*eta_dot_k)*dt -- and forward Euler applied to a lightly
+// damped oscillator is only stable for dt < 2*zeta/wn. At this file's
+// OWN compiled-in defaults (gModeHz=35, gModeZeta=0.05) that threshold
+// is 0.46 ms -- 4.3x SMALLER than the loop's ordinary 2 ms period. Direct
+// eigenvalue check of the old F confirms it: |eigenvalue| = 1.072 at
+// (35 Hz, zeta=0.05, dt=2ms), i.e. the (eta,eta_dot) state amplitude grew
+// ~7.2% EVERY control cycle, doubling roughly every 20 ms -- present at
+// the ordinary nominal dt, not just under a timing spike, and true across
+// the ENTIRE documented n<Hz>/z<value> sweep range (25-45 Hz x 0.02-0.15,
+// all unstable at dt=2ms, checked numerically, not assumed). Because the
+// filter runs continuously from boot regardless of arm state (see the
+// header's LINK LOSS AUTO-DISARMS note), it can already be mid-blowup the
+// moment "a1" is sent, dumping a large wrong eta_dot straight into
+// om_true's innovation right as the law engages -- exactly "goes bananas
+// immediately on arm" with correct placement and the correct corner.
+// Part 1's self-heal (below) kept catching this once it went non-finite,
+// but the instability regrew every cycle after each reset, so the wrong
+// correction kept recurring rather than actually going away.
+//
+// FIX: replace forward Euler for the (eta,eta_dot) block with the EXACT
+// (zero-order-hold) discretization of a damped harmonic oscillator --
+// the closed-form matrix exponential of [[0,1],[-wn^2,-2*zeta*wn]].
+// That block's eigenvalues are exp(-zeta*wn*dt) exactly: strictly inside
+// the unit disk for ANY zeta>0 and ANY dt>0, by construction -- not a
+// tuned-for-these-defaults fix, stable across the whole sweep range.
+// om_true's row (still a pure random walk, F row [1,0,0]) is untouched.
 void updateModeKalman(float dt) {
-  // 10ms is ~5x the nominal 2ms loop period -- comfortably inside
-  // stability even at the top of this file's live-settable range (see
-  // the header's REAL, UNRESOLVED RISK note, and n/z's own refusal
-  // bounds). This is IN ADDITION TO loop()'s existing 0.5s clamp, not a
+  // Still clamp dt -- no longer needed for THIS block's stability (the
+  // exact discretization below is unconditionally stable for any dt), but
+  // an extreme dt still means the fixed per-step Qdiag below and the
+  // gyro-innovation timing assumption stop being a sane approximation, so
+  // keep the guard. IN ADDITION TO loop()'s existing 0.5s clamp, not a
   // replacement for it -- that one guards every other estimator in this
   // file too.
   if (dt > 0.01f) { dt = 0.01f; }
 
-  const float wn  = 2.0f * (float)PI * gModeHz;
-  const float wn2 = wn * wn;
-  const float f21 = -wn2 * dt;
-  const float f22 = 1.0f - 2.0f * gModeZeta * wn * dt;
+  const float wn   = 2.0f * (float)PI * gModeHz;
+  const float zeta = gModeZeta;
+  // wd = damped natural frequency. gModeZeta is refused outside (0,1) by
+  // the 'z' command handler, so zeta<1 always holds here -- the
+  // underdamped closed form below is always the right branch.
+  const float wd    = wn * sqrtf(fmaxf(1.0f - zeta * zeta, 1.0e-6f));
+  const float decay = expf(-zeta * wn * dt);
+  const float cwd   = cosf(wd * dt);
+  const float swd   = sinf(wd * dt);
+  const float zwwd  = (zeta * wn) / wd;
+  const float f11 = decay * (cwd + zwwd * swd);
+  const float f12 = decay * (swd / wd);
+  const float f21 = decay * (-(wn * wn / wd) * swd);
+  const float f22 = decay * (cwd - zwwd * swd);
   const float F[3][3] = { { 1.0f, 0.0f, 0.0f },
-                           { 0.0f, 1.0f, dt   },
+                           { 0.0f, f11,  f12  },
                            { 0.0f, f21,  f22  } };
   const float Qdiag[3] = { kQOmTrue, 0.0f, kQEtaDot };
 
@@ -551,7 +594,7 @@ void updateModeKalman(float dt) {
     // ---- predict state: x = F*x ----
     const float x0 = x[0], x1 = x[1], x2 = x[2];
     x[0] = x0;
-    x[1] = x1 + x2 * dt;
+    x[1] = f11 * x1 + f12 * x2;
     x[2] = f21 * x1 + f22 * x2;
 
     // ---- predict covariance: P = F*P*F' + Q ----
