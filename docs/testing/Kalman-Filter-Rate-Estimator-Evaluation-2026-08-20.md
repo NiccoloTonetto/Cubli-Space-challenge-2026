@@ -253,6 +253,51 @@ baseline to debug against if it goes wrong. Do 0 → 1 → 2 in order; 3 is the
 maximum-rejection technique, but it's only a good idea once 0-2 have derisked
 inputs it depends on.
 
+## 6. Update — a hardware bug found and fixed (2026-08-20, later same day)
+
+Option 2 was built anyway (`Stage4_FixedOffset_Kalman.ino`, corner-bringup
+and its WiFi port), ahead of §5's own gating ("only if the tap test shows a
+stable, well-characterized mode"). First real-hardware runs found a genuine
+implementation bug, not a modeling-risk issue this doc already anticipated:
+`om_x/y/z_filt_dps` and `mode_x/y/z_dps` went to `nan` within ~10s of boot on
+every session, on both the USB and WiFi builds (the WiFi port is a byte-for-
+byte copy of the math, so this was latent in the original design, not
+introduced by porting). `commandWheels()`'s existing `isfinite(u)` check
+correctly caught the resulting NaN torque and disarmed — so no unsafe torque
+was ever commanded — but with nothing printed and no recovery path short of
+a reboot, which at the terminal looked exactly like "arming does nothing."
+
+**Root cause**: `f22 = 1 - 2*zeta*wn*dt` is the mode oscillator's `eta_dot`
+discrete pole. It's only inside the stable unit disk (`|f22| < 1`) for `dt`
+small relative to `wn`/`zeta` — at the upper end of this file's own
+live-settable range (e.g. `wn = 2*pi*45`, `zeta = 0.15`), `dt` as small as
+`0.01s` already pushes `|f22| > 1`. §2's Python validation never hit this
+because it replayed a fixed, uniform `dt` from real telemetry offline — it
+never saw the occasional large `dt` a live 500 Hz loop produces under real
+per-cycle load (CAN + SPI +, on the WiFi build, the radio bridge). One bad
+cycle is enough to blow up `x[2]`/`P` in a single step; nothing in the
+original code detected or recovered from that once it happened.
+
+**Fix, both firmware files, both defense-in-depth rather than a single
+point fix**:
+1. `updateModeKalman()` now clamps its own `dt` to 10 ms — tighter than
+   `loop()`'s general 0.5s stall-fallback, sized specifically for this
+   pole's stability rather than reusing the loop-level clamp meant for
+   every estimator in the file.
+2. Per-axis self-healing: if a state or covariance update produces a
+   non-finite value, that axis's Kalman state resets (same "detect
+   divergence, reset" pattern `attitudeUpdate()` already uses for
+   `ghat`/`bhat`'s `badCount` threshold) instead of staying NaN-locked
+   until a power cycle. Prints `# KF axis X reset (...)` when it fires, so
+   a recurrence is visible rather than silent.
+
+**What this doesn't change**: the §5 recommendation and its risk framing
+still hold — this was a numerical-stability bug in the *implementation*,
+not evidence about the *modeling* risk (whether an explicit mode state is
+trustworthy without the tap test). That risk is unchanged and the tap test
+is still the right prerequisite for trusting `gModeHz`/`gModeZeta` as
+anything more than a live-tunable starting guess.
+
 ## Related
 
 - `Notch Filter and Adaptive Control — Evaluation.md` — the document this

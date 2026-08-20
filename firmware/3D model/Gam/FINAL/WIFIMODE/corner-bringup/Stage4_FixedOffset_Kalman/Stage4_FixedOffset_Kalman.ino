@@ -504,7 +504,38 @@ void initModeKalman() {
   }
 }
 
+// BUG FOUND 2026-08-20 on real hardware (both this file and the USB
+// source): the WiFi port is a byte-for-byte copy of the Kalman math, so
+// this was a latent defect in the ORIGINAL design, not a porting error --
+// telemetry showed om_x/y/z_filt_dps and mode_x/y/z_dps stuck at "nan"
+// from within ~10s of boot, on every arm attempt, silently (isfinite(u)
+// in commandWheels() correctly caught the resulting NaN torque and
+// disarmed, but with nothing printed and no way to recover without a
+// reboot -- indistinguishable from "arming does nothing" at the
+// terminal). Root cause: f22 = 1 - 2*zeta*wn*dt is this filter's
+// eta_dot pole, and it leaves the stable unit disk for large dt at
+// realistic wn/zeta (e.g. wn=2*pi*45, zeta=0.15, dt=0.01s already gives
+// |f22|>1) -- a SINGLE cycle with an anomalously large dt (a CAN/SPI/
+// WiFi-bridge hiccup; this file's loop() has more going on per cycle
+// than the USB build's, more exposure to it) can blow up x[2]/P in one
+// step, and nothing here previously detected or recovered from that.
+// Two fixes, both defense-in-depth rather than a single point fix:
+//   1. Clamp dt tighter than the loop's general 0.5s stall-fallback,
+//      specifically for the stability this pole needs.
+//   2. Detect non-finite state/covariance per axis and reset JUST that
+//      axis -- same "detect divergence, reset" pattern attitudeUpdate()
+//      already uses for ghat/bhat (see its badCount threshold above) --
+//      so a bad cycle costs one axis's convergence, not a permanent
+//      NaN-lock requiring a power cycle.
 void updateModeKalman(float dt) {
+  // 10ms is ~5x the nominal 2ms loop period -- comfortably inside
+  // stability even at the top of this file's live-settable range (see
+  // the header's REAL, UNRESOLVED RISK note, and n/z's own refusal
+  // bounds). This is IN ADDITION TO loop()'s existing 0.5s clamp, not a
+  // replacement for it -- that one guards every other estimator in this
+  // file too.
+  if (dt > 0.01f) { dt = 0.01f; }
+
   const float wn  = 2.0f * (float)PI * gModeHz;
   const float wn2 = wn * wn;
   const float f21 = -wn2 * dt;
@@ -555,6 +586,24 @@ void updateModeKalman(float dt) {
 
     for (int i = 0; i < 3; ++i) {
       for (int j = 0; j < 3; ++j) { gKfP[a][i][j] = Ppred[i][j] - K[i]*Hph[j]; }
+    }
+
+    // Self-healing: reset JUST this axis if the update produced a
+    // non-finite state or covariance, instead of staying NaN-locked
+    // until reboot (see the BUG FOUND note above).
+    bool bad = !isfinite(x[0]) || !isfinite(x[1]) || !isfinite(x[2]);
+    for (int r = 0; r < 3 && !bad; ++r) {
+      for (int c = 0; c < 3; ++c) {
+        if (!isfinite(gKfP[a][r][c])) { bad = true; break; }
+      }
+    }
+    if (bad) {
+      x[0] = x[1] = x[2] = 0.0f;
+      for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 3; ++c) { gKfP[a][r][c] = (r == c) ? 1.0e-2f : 0.0f; }
+      }
+      gBoot.print("# KF axis "); gBoot.print(a == 0 ? "X" : a == 1 ? "Y" : "Z");
+      gBoot.println(" reset (state/covariance went non-finite)");
     }
 
     om_true[a]     = x[0];
