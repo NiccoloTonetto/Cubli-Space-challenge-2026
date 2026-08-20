@@ -964,7 +964,12 @@ void loop() {
 //   - Bench-sweep gModeHz/gModeZeta ("n<Hz>"/"z<value>") watching
 //     mode_x/y/z_dps -- this is the practical stand-in for the tap test
 //     if it hasn't happened yet, but a real tap test is still the better
-//     answer.
+//     answer. FINAL/kalman_mode_hint.py automates the starting guess: point
+//     it at ANY corner-format capture (this file's own, or a plain
+//     AutoTrim/RateFilter one) and it Welch-PSDs om_x/y/z, finds the peak,
+//     and prints ready-to-paste "n<Hz>"/"z<value>" commands -- same
+//     approach used to validate this filter's design in the first place,
+//     not a new/different method.
 //   - kQOmTrue/kQEtaDot/kRGyro are compile-time constants, not live-
 //     settable -- if bench sweeping wn/zeta alone doesn't get a
 //     believable mode_x/y/z_dps trace, these need attention too (see the
