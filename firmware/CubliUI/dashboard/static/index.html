@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cubli — Balance Console</title>
+<!--
+  Cubli laptop dashboard. Served by ../app.py at http://127.0.0.1:8000.
+
+  NOTHING here is loaded from the network, the webfont included. Everything
+  comes from static/vendor/ and static/fonts/. The bench runs off a phone
+  hotspot and the instrument must not blank or reflow when cellular drops.
+
+  COLOUR IS AN ALARM, NOT DECORATION. The console is black, white and dark
+  blue while everything is nominal. Amber and red appear only when something
+  needs a human: an armed cube, a dead link, a refused command. If you add a
+  control, keep it monochrome -- spending red on a button that is merely
+  important is what makes real warnings invisible.
+
+  SAFETY MODEL, because it is not obvious from the buttons:
+  the cube disarms itself when this page stops talking. app.py sends the
+  Teensy's 'k' keepalive every 100 ms and stops the moment it dies; the Teensy
+  auto-disarms 3 s after the keepalive stops. So killing the server, losing
+  WiFi or walking out of range all disarm the cube. E-STOP is the fast path,
+  not the only one.
+
+  MODE IS A COMMAND, NOT A BUILD. ../../teensy/CubliBalance/CubliBalance.ino
+  holds both control laws; EDGE/CORNER below send m0/m1 and the cube switches
+  at runtime. It always force-disarms first and lands DISARMED, so arming
+  again is a separate, deliberate press.
+-->
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "/static/vendor/three.module.min.js" } }
+</script>
+
+<style>
+  /* Latin subset of Montserrat Variable, ~20 KB. local() first so a machine
+     that already has the family skips the embedded copy entirely. */
+  @font-face{
+    font-family:"Montserrat";
+    font-style:normal;
+    font-weight:400 800;
+    font-display:swap;
+    src:local("Montserrat"), url("/static/fonts/montserrat.woff2") format("woff2");
+  }
+
+  :root{
+    color-scheme: dark;
+
+    --black:#000; --panel:#0a0c12; --panel-hi:#101420;
+    --line:rgba(255,255,255,.09); --line-soft:rgba(255,255,255,.05);
+
+    --ink:#fff; --ink-2:#b8bfcc; --dim:#6f7787; --dimmer:#272d39;
+
+    --blue:#3b82f6; --blue-deep:#101f4d; --blue-ink:#9dbcff;
+    --amber:#f5b544; --red:#ff3b52; --green:#34d399;
+
+    /* The subset covers Latin only. Greek (phi, rho, theta, omega, tau) and
+       the geometric status glyphs fall through to the mono stack, which is why
+       every label that uses them is .mono. */
+    --sans:"Montserrat","Segoe UI",system-ui,-apple-system,sans-serif;
+    --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--black); color:var(--ink); min-height:100vh;
+    font:400 14px/1.5 var(--sans);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  .mono{font-family:var(--mono)}
+
+  /* --- header --- */
+  header{
+    position:sticky; top:0; z-index:20; background:rgba(0,0,0,.92);
+    backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:10px; padding:12px 20px; flex-wrap:wrap;
+  }
+  .brand{display:flex; align-items:baseline; gap:8px; margin-right:8px}
+  .brand b{font-weight:800; letter-spacing:.26em; font-size:14px; color:#fff}
+  .brand span{font-weight:500; letter-spacing:.2em; font-size:10px; color:var(--dim)}
+
+  .pill{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.04em;
+    padding:5px 11px; border-radius:100px;
+    border:1px solid var(--dimmer); color:var(--dim); white-space:nowrap;
+  }
+  .pill.ok  {border-color:rgba(255,255,255,.28); color:#fff;           background:rgba(255,255,255,.05)}
+  .pill.live{border-color:rgba(59,130,246,.5);  color:var(--blue-ink); background:rgba(59,130,246,.10)}
+  .pill.warn{border-color:rgba(245,181,68,.5);  color:var(--amber);    background:rgba(245,181,68,.08)}
+  .pill.bad {border-color:rgba(255,59,82,.6);   color:var(--red);      background:rgba(255,59,82,.10); font-weight:700}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+  .pill.blink{animation:blink 1.1s ease-in-out infinite}
+
+  .spacer{flex:1}
+
+  #estop{
+    font:800 13px/1 var(--sans); letter-spacing:.22em;
+    padding:14px 32px; border:1px solid rgba(255,59,82,.55); border-radius:8px;
+    cursor:pointer; background:#c81030; color:#fff;
+    box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 6px 26px rgba(255,59,82,.28);
+    transition:transform .08s, background .12s, box-shadow .12s;
+  }
+  #estop:hover{background:#e11434; box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 6px 32px rgba(255,59,82,.45)}
+  #estop:active{transform:translateY(2px)}
+
+  /* Banner for things that must not scroll past in the console pane. */
+  #gate-warn{
+    display:none; padding:9px 20px; font-family:var(--mono); font-size:11px;
+    border-bottom:1px solid rgba(255,59,82,.35); letter-spacing:.02em;
+    background:rgba(255,59,82,.11); color:var(--red);
+  }
+  #gate-warn.show{display:block}
+
+  /* --- layout --- */
+  main{
+    max-width:1680px; margin:0 auto; padding:20px;
+    display:grid; grid-template-columns:320px 1fr; gap:20px; align-items:start;
+  }
+  @media (max-width:1000px){ main{grid-template-columns:1fr; padding:14px; gap:14px} }
+
+  .col{display:flex; flex-direction:column; gap:20px; min-width:0}
+  @media (max-width:1000px){ .col{gap:14px} }
+
+  .panel{
+    background:linear-gradient(180deg,var(--panel-hi) 0%,var(--panel) 42%,#06080d 100%);
+    border:1px solid var(--line); border-radius:12px; padding:16px 16px 17px;
+    min-width:0;
+  }
+  .panel h2{
+    display:flex; align-items:center; gap:9px;
+    margin:0 0 14px; font-size:10px; letter-spacing:.24em; text-transform:uppercase;
+    color:var(--dim); font-weight:700;
+  }
+  .panel h2::before{content:""; width:3px; height:11px; border-radius:2px; background:var(--blue)}
+
+  /* --- status readout --- */
+  .state-big{
+    font:700 19px/1.15 var(--sans); letter-spacing:.1em; text-transform:uppercase;
+    color:var(--dim);
+  }
+  .state-big.armed{color:var(--red)}
+  .state-big.halted{color:var(--amber)}
+  .state-sub{font-family:var(--mono); font-size:10.5px; color:var(--dim); margin-top:6px}
+
+  .phi{display:flex; align-items:baseline; gap:6px; margin-top:14px}
+  .phi .v{font-family:var(--mono); font-size:34px; font-weight:700; line-height:1; letter-spacing:-.02em; color:var(--ink)}
+  .phi .v.in{color:var(--green)}
+  .phi .u{font-size:12px; color:var(--dim)}
+  .bar{height:5px; background:#0b0e14; border:1px solid var(--line-soft); border-radius:100px; overflow:hidden; margin:9px 0 6px}
+  .bar>div{height:100%; width:0%; background:var(--blue); transition:width .12s linear}
+
+  .kv{display:grid; grid-template-columns:repeat(2,1fr); gap:9px 10px; margin-top:12px}
+  .kv>div{min-width:0}
+  .kv b{display:block; font:700 9px/1 var(--sans); letter-spacing:.18em; text-transform:uppercase; color:var(--dim); margin-bottom:4px}
+  .kv span{font-family:var(--mono); font-size:11.5px; color:var(--ink-2)}
+
+  /* --- buttons --- */
+  .btn{
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font:600 11.5px/1 var(--sans); letter-spacing:.1em; text-transform:uppercase;
+    white-space:nowrap; padding:12px 11px; border-radius:7px;
+    border:1px solid var(--dimmer); background:#0f131b; color:var(--ink-2);
+    cursor:pointer; transition:background .12s, border-color .12s, color .12s, transform .08s;
+    width:100%;
+  }
+  .btn:hover:not(:disabled){background:#171c26; border-color:rgba(255,255,255,.22); color:#fff}
+  .btn:active:not(:disabled){transform:translateY(1px)}
+  .btn:disabled{opacity:.3; cursor:not-allowed}
+  /* White marks STATE (which mode the cube is in), blue marks the ACTION you
+     can take. When both were blue, the selected mode and ARM were the same
+     button at a glance -- not a mistake worth making at arm time. */
+  .btn.on{background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.38); color:#fff}
+  .btn.on::before{content:""; width:6px; height:6px; border-radius:50%; background:var(--blue); flex:none}
+  .btn.go{background:#1a3786; border-color:rgba(99,155,255,.55); color:#fff; font-weight:700}
+  .btn.go:hover:not(:disabled){background:#2149ad; border-color:var(--blue); color:#fff}
+  .btn.confirm{background:#7a4d06; border-color:rgba(245,181,68,.6); color:#ffe9bf; font-weight:700}
+  .btn.confirm:hover:not(:disabled){background:#96600a; border-color:var(--amber)}
+  .btn.big{padding:15px 11px; font-size:13px; letter-spacing:.16em}
+
+  /* The letter the button puts on the wire. Cheap to render, and it removes
+     the guesswork when cross-checking against the firmware console below. */
+  .key{
+    font-family:var(--mono); font-size:9.5px; font-weight:700; letter-spacing:0;
+    padding:2px 6px; border-radius:4px; border:1px solid var(--dimmer);
+    background:rgba(255,255,255,.05); color:var(--dim);
+  }
+  .btn:hover:not(:disabled) .key{color:var(--ink-2); border-color:rgba(255,255,255,.22)}
+  .btn.go .key{border-color:rgba(59,130,246,.4); color:var(--blue-ink)}
+
+  .stack{display:flex; flex-direction:column; gap:8px}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .note{font-size:10.5px; color:var(--dim); line-height:1.55; margin:11px 0 0}
+  .hint{font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:8px; min-height:14px}
+  .hint.warn{color:var(--amber)}
+  .divider{height:1px; background:var(--line-soft); margin:14px 0 12px}
+  .section-label{
+    font:700 9px/1 var(--sans); letter-spacing:.2em; text-transform:uppercase;
+    color:var(--dim); margin:0 0 8px;
+  }
+
+  /* --- resolved-pivot readout --- */
+  .readout{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin-top:10px; padding:9px 11px; border-radius:7px;
+    background:rgba(59,130,246,.06); border:1px solid rgba(59,130,246,.18);
+  }
+  .readout b{font:700 9.5px/1 var(--sans); letter-spacing:.2em; text-transform:uppercase; color:var(--dim)}
+  .readout span{font-family:var(--mono); font-size:11.5px; color:var(--blue-ink); text-align:right}
+  .readout.stale{background:rgba(255,255,255,.03); border-color:var(--line)}
+  .readout.stale span{color:var(--dim)}
+
+  /* --- sliders / number inputs --- */
+  .ctl{margin-top:11px}
+  .ctl label{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font:600 9.5px/1 var(--sans); letter-spacing:.16em; text-transform:uppercase;
+    color:var(--dim); margin-bottom:7px;
+  }
+  .ctl label .mono{letter-spacing:0; text-transform:none; font-size:11px; color:var(--ink-2)}
+
+  input[type=range]{
+    width:100%; height:4px; -webkit-appearance:none; appearance:none;
+    background:var(--dimmer); border-radius:2px; outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:15px; height:15px; border-radius:50%;
+    background:var(--ink); cursor:pointer; border:2px solid var(--panel);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:15px; height:15px; border-radius:50%; background:var(--ink);
+    cursor:pointer; border:2px solid var(--panel);
+  }
+  input[type=range]:disabled{opacity:.4}
+
+  .trim{display:grid; grid-template-columns:34px 1fr 34px auto; gap:6px; align-items:center}
+  .trim input[type=number]{
+    width:100%; text-align:center; font-family:var(--mono); font-size:12px;
+    padding:7px 4px; background:#07090e; color:var(--ink);
+    border:1px solid var(--dimmer); border-radius:5px;
+  }
+  .btn.tiny{padding:7px 4px; font-size:12px; width:auto}
+  .btn.tiny.wide{padding:7px 10px; font-size:11px}
+
+  .hide{display:none !important}
+
+  /* --- attitude + tiles --- */
+  .top{display:grid; grid-template-columns:1.35fr 1fr; gap:20px; align-items:start}
+  @media (max-width:1240px){ .top{grid-template-columns:1fr} }
+
+  .scene{position:relative; height:clamp(340px,44vh,500px); overflow:hidden; padding:0}
+  .scene .overlay{position:absolute; top:14px; left:16px; z-index:2; pointer-events:none}
+  .scene .overlay .lab{font:700 10px/1 var(--sans); letter-spacing:.24em; text-transform:uppercase; color:var(--dim)}
+  .scene .overlay .piv{font-family:var(--mono); font-size:17px; font-weight:700; color:var(--blue-ink); margin-top:7px}
+  .scene .overlay .sub{font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:3px}
+  .scene .foot{position:absolute; bottom:12px; left:16px; z-index:2; pointer-events:none;
+               font-family:var(--mono); font-size:9.5px; color:var(--dimmer); line-height:1.6}
+  .scene canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+  #cube-error{
+    position:absolute; inset:0; z-index:3; display:none; align-items:center; justify-content:center;
+    padding:24px; text-align:center; font-family:var(--mono); font-size:11px; color:var(--red);
+  }
+  #cube-error.show{display:flex}
+
+  .tiles{display:grid; grid-template-columns:1fr 1fr; gap:12px; align-content:start}
+  .tile{
+    background:linear-gradient(180deg,var(--panel-hi) 0%,var(--panel) 42%,#06080d 100%);
+    border:1px solid var(--line); border-radius:10px; padding:12px 13px; min-width:0;
+  }
+  .tile b{display:block; font:700 9px/1 var(--sans); letter-spacing:.18em;
+          text-transform:uppercase; color:var(--dim); margin-bottom:7px}
+  .tile .val{font-family:var(--mono); font-size:13px; color:var(--ink-2); line-height:1.6; word-break:break-word}
+
+  /* --- charts --- */
+  #charts{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+  @media (max-width:1240px){ #charts{grid-template-columns:1fr} }
+  .chart-wrap{position:relative; height:200px}
+  canvas.chart{width:100%; height:100%; display:block}
+
+  /* --- console --- */
+  #console{
+    font-family:var(--mono); font-size:11px; line-height:1.6;
+    height:190px; overflow-y:auto; padding:2px 0;
+  }
+  #console div{word-break:break-word}
+  #console .i{color:var(--dim)}
+  #console .w{color:var(--amber)}
+  #console .t{color:var(--blue-ink); font-weight:700}
+  #console::-webkit-scrollbar{width:8px}
+  #console::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14); border-radius:4px}
+  .con-head{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .con-head button{
+    background:none; border:none; cursor:pointer; padding:0;
+    font:600 9.5px/1 var(--sans); letter-spacing:.16em; text-transform:uppercase; color:var(--dim);
+  }
+  .con-head button:hover{color:var(--ink-2)}
+
+  ::selection{background:rgba(59,130,246,.35); color:#fff}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><b>CUBLI</b><span>BALANCE</span></div>
+  <div id="pill-ws"    class="pill">SERVER</div>
+  <div id="pill-link"  class="pill">NO LINK</div>
+  <div id="pill-state" class="pill">DISARMED</div>
+  <div id="pill-rec"   class="pill hide">REC</div>
+  <div class="spacer"></div>
+  <button id="estop" title="Disarm now (spacebar works too)">E-STOP</button>
+</header>
+
+<div id="gate-warn"></div>
+
+<main>
+  <!-- LEFT: status, mode, control, recording -->
+  <div class="col">
+
+    <div class="panel">
+      <h2>Status</h2>
+      <div id="st-state" class="state-big">DISARMED</div>
+      <div id="st-sub" class="state-sub">waiting for telemetry</div>
+
+      <div class="phi">
+        <span id="m-phi" class="v">—</span>
+        <span class="u mono">deg |φ|</span>
+      </div>
+      <div class="bar"><div id="phi-bar"></div></div>
+      <div id="m-gate" class="mono" style="font-size:10px;color:var(--dim)">gate —</div>
+
+      <div class="kv">
+        <div><b>Rate</b><span id="m-rate">—</span></div>
+        <div><b>Age</b><span id="m-age">—</span></div>
+        <div><b>Packets</b><span id="m-pkts">—</span></div>
+        <div><b>Gain</b><span id="m-gain">—</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Run mode</h2>
+      <div class="row2">
+        <button id="btn-mode-edge"   class="btn" data-mode="edge">Edge<span class="key">m0</span></button>
+        <button id="btn-mode-corner" class="btn" data-mode="corner">Corner<span class="key">m1</span></button>
+      </div>
+      <div id="mode-hint" class="hint"></div>
+      <p class="note">
+        One sketch holds both laws. Switching sends <span class="mono">m0</span>/<span
+        class="mono">m1</span>; the cube <b>always disarms first</b> and stays
+        disarmed, so arming again is a separate press. Disabled while armed —
+        use E-STOP or DISARM first.
+      </p>
+    </div>
+
+    <div class="panel">
+      <h2>Control</h2>
+
+      <button id="btn-arm" class="btn go big">Arm<span class="key">a1</span></button>
+      <div id="arm-hint" class="hint"></div>
+
+      <button id="btn-resolve" class="btn" style="margin-top:8px">
+        Re-resolve pivot<span id="key-resolve" class="key">c</span>
+      </button>
+      <div id="pivot-readout" class="readout stale">
+        <b id="pivot-kind">Pivot</b><span id="pivot-val">not resolved</span>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-label">Halt</div>
+      <div class="row2">
+        <button id="btn-halt"   class="btn">Halt<span class="key">h1</span></button>
+        <button id="btn-resume" class="btn">Resume<span class="key">h0</span></button>
+      </div>
+
+      <div class="ctl">
+        <label>Gain scale <span id="gain-val" class="mono">1.00</span></label>
+        <input id="gain" type="range" min="0" max="1" step="0.05" value="1">
+      </div>
+
+      <!-- Edge-only: the corner law uses a compile-time offset and answers
+           'o' with a refusal, so the control is hidden rather than shown
+           doing nothing. -->
+      <div id="trim-panel" class="ctl hide">
+        <label>Edge trim <span class="mono">deg</span></label>
+        <div class="trim">
+          <button id="btn-trim-dn" class="btn tiny">−</button>
+          <input id="trim-val" type="number" value="0.00" step="0.05">
+          <button id="btn-trim-up" class="btn tiny">+</button>
+          <button id="btn-trim-set" class="btn tiny wide">Send<span class="key">o</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Recording</h2>
+      <div class="row2">
+        <button id="btn-rec-start" class="btn go">Start</button>
+        <button id="btn-rec-stop"  class="btn">Stop</button>
+      </div>
+      <div id="rec-status" class="hint">idle</div>
+      <p class="note">
+        Writes to <span class="mono">telemetry/plot/</span> at full stream rate
+        with the same header the matplotlib scripts use, so
+        <span class="mono">plot_session_csv.py</span> reads it unchanged. A mode
+        switch rolls to a new file — the two widths never share one.
+      </p>
+    </div>
+  </div>
+
+  <!-- RIGHT: attitude, tiles, charts, console -->
+  <div class="col">
+
+    <div class="top">
+      <div class="panel scene">
+        <div class="overlay">
+          <div class="lab">Attitude</div>
+          <div id="pivot-label" class="piv">—</div>
+          <div id="pivot-sub" class="sub">awaiting resolve</div>
+        </div>
+        <div class="foot">
+          rotation = axis-angle from φ<br>
+          (tilt error vs equilibrium, not Euler)
+        </div>
+        <canvas id="cube"></canvas>
+        <div id="cube-error"></div>
+      </div>
+
+      <div class="tiles">
+        <div class="tile"><b id="lbl-a">φ x / y / z</b><div id="m-a" class="val">—</div></div>
+        <div class="tile"><b id="lbl-b">ω x / y / z</b><div id="m-b" class="val">—</div></div>
+        <div class="tile"><b id="lbl-c">Wheels — RPM</b><div id="m-c" class="val">—</div></div>
+        <div class="tile"><b id="lbl-d">τ — N·m</b><div id="m-d" class="val">—</div></div>
+      </div>
+    </div>
+
+    <div id="charts"></div>
+
+    <div class="panel">
+      <div class="con-head">
+        <h2 style="margin:0">Firmware console</h2>
+        <button id="btn-clear">clear</button>
+      </div>
+      <div id="console"><div class="i">waiting for telemetry…</div></div>
+    </div>
+  </div>
+</main>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -6,6 +6,7 @@ FINAL/
   UI/
     README.md
     web/index.html
+    web/fonts/montserrat.woff2   # Latin subset, inlined by embed_web.py
     tools/embed_web.py
     tools/build.py
     docs/
