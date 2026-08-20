@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "teensy": [
+    {
+      "id": "ota_base",
+      "path": "firmware/teensy/ota_base",
+      "sketch": "ota_base.ino",
+      "ota_capable": true,
+      "description": "Minimal Teensy OTA/FlasherX base template"
+    },
+    {
+      "id": "corner_full_law",
+      "path": "firmware/teensy/corner_full_law",
+      "sketch": "corner_full_law.ino",
+      "ota_capable": false,
+      "description": "Corner Stage4 full control law (WiFi)"
+    },
+    {
+      "id": "corner_auto_trim",
+      "path": "firmware/teensy/corner_auto_trim",
+      "sketch": "corner_auto_trim.ino",
+      "ota_capable": false,
+      "description": "Corner Stage4 auto-trim (WiFi)"
+    },
+    {
+      "id": "corner_auto_trim_rf",
+      "path": "firmware/teensy/corner_auto_trim_rf",
+      "sketch": "corner_auto_trim_rf.ino",
+      "ota_capable": false,
+      "description": "Corner Stage4 auto-trim + rate filter (WiFi)"
+    },
+    {
+      "id": "edge_balance",
+      "path": "firmware/teensy/edge_balance",
+      "sketch": "edge_balance.ino",
+      "ota_capable": false,
+      "description": "Edge balance (WiFi)"
+    }
+  ],
+  "xiao": [
+    {
+      "id": "console_host",
+      "path": "firmware/xiao/console_host",
+      "sketch": "console_host.ino",
+      "description": "XIAO HTTP/WS console host + OTA bridge"
+    }
+  ]
+}

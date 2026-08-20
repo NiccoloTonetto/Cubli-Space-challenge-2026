@@ -1,0 +1,8 @@
+*
+!.gitignore
+!manifest.json
+!teensy/
+!xiao/
+!teensy/**/
+!xiao/**/
+!**/.gitkeep

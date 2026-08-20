@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cubli Console</title>
+<!--
+  Cubli console -- single page, zero external dependencies.
+
+  Served two ways, both from this one file:
+    * gzipped into PROGMEM by ../tools/build_web.py and served by the XIAO at
+      http://<xiao-ip>/  -- the normal way to use it;
+    * opened straight off disk (file://) for UI work with no hardware, in
+      which case the WS host box appears so you can point it at the board.
+
+  NOTHING here is loaded from the network. The bench runs off a phone hotspot
+  and the instrument must not blank when cellular drops -- the same rule the
+  Python dashboard's vendored libraries follow. That is why the charts are
+  ~120 lines of canvas rather than Chart.js: 205 KB of minified library will
+  not fit in an ESP32-C6 PROGMEM blob, and this whole page gzips to ~9 KB.
+
+  SAFETY MODEL, because it is not obvious from the buttons:
+  the cube disarms itself when this page stops talking. The browser pings
+  every 250 ms; the XIAO turns those pings into the Teensy's 'k' keepalive
+  and stops the moment they do; the Teensy auto-disarms 300 ms after the
+  keepalive stops. So closing this tab, killing WiFi or walking out of range
+  all disarm the cube. E-STOP is the fast path, not the only one.
+-->
+<style>
+  :root{
+    color-scheme: dark;
+    --bg:#04070d; --panel:#0b1422; --line:rgba(56,189,248,.14);
+    --ink:#e2e8f0; --dim:#64748b; --dimmer:#334155;
+    --cyan:#22d3ee; --amber:#fbbf24; --pink:#f472b6;
+    --green:#34d399; --red:#f43f5e;
+    --mono:ui-monospace,"Cascadia Mono","SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink); min-height:100vh;
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:var(--mono)}
+
+  header{
+    position:sticky; top:0; z-index:20; background:rgba(4,7,13,.93);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:14px; padding:10px 18px; flex-wrap:wrap;
+  }
+  .brand{font-weight:700; letter-spacing:.22em; color:var(--cyan); font-size:13px}
+  .brand span{color:var(--dim); font-weight:400; letter-spacing:.14em; font-size:11px}
+
+  .pill{
+    font-family:var(--mono); font-size:11px; padding:4px 10px; border-radius:4px;
+    border:1px solid var(--dimmer); color:var(--dim); white-space:nowrap;
+  }
+  .pill.ok  {border-color:rgba(52,211,153,.5); color:var(--green); background:rgba(52,211,153,.08)}
+  .pill.live{border-color:rgba(34,211,238,.5); color:var(--cyan);  background:rgba(34,211,238,.08)}
+  .pill.warn{border-color:rgba(251,191,36,.5); color:var(--amber); background:rgba(251,191,36,.08)}
+  .pill.bad {border-color:rgba(244,63,94,.6);  color:var(--red);   background:rgba(244,63,94,.10); font-weight:700}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.4}}
+  .pill.blink{animation:blink 1.1s ease-in-out infinite}
+
+  .spacer{flex:1}
+
+  #estop{
+    font:700 14px/1 system-ui,sans-serif; letter-spacing:.18em;
+    padding:14px 30px; border:none; border-radius:6px; cursor:pointer;
+    background:#e11d48; color:#fff; box-shadow:0 0 24px rgba(244,63,94,.45);
+    transition:transform .08s, background .12s;
+  }
+  #estop:hover{background:#f43f5e}
+  #estop:active{transform:translateY(2px)}
+  #estop:disabled{background:#4c1d29; color:#94a3b8; box-shadow:none; cursor:not-allowed}
+
+  #flash-msg{
+    display:none; padding:7px 18px; font-family:var(--mono); font-size:11px;
+    border-bottom:1px solid transparent;
+  }
+  #flash-msg.warn{display:block; background:rgba(251,191,36,.10); color:var(--amber); border-bottom-color:rgba(251,191,36,.3)}
+  #flash-msg.bad {display:block; background:rgba(244,63,94,.12);  color:var(--red);   border-bottom-color:rgba(244,63,94,.35)}
+  #flash-msg.info{display:block; background:rgba(34,211,238,.08); color:var(--cyan);  border-bottom-color:rgba(34,211,238,.25)}
+
+  main{
+    max-width:1500px; margin:0 auto; padding:16px;
+    display:grid; grid-template-columns:300px 1fr; gap:16px; align-items:start;
+  }
+  @media (max-width:1000px){ main{grid-template-columns:1fr} }
+
+  .col{display:flex; flex-direction:column; gap:16px}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px}
+  .panel h2{
+    margin:0 0 12px; font-size:10px; letter-spacing:.2em; text-transform:uppercase;
+    color:rgba(34,211,238,.75); font-weight:600;
+  }
+
+  /* --- battery gauge --- */
+  .gauge{display:flex; align-items:center; gap:14px}
+  .gauge svg{flex:none}
+  .gauge .v{font-family:var(--mono); font-size:30px; font-weight:700; line-height:1}
+  .gauge .u{font-size:12px; color:var(--dim); margin-left:3px}
+  .gauge .sub{font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:5px}
+
+  /* --- buttons --- */
+  .btn{
+    font:600 12px/1 system-ui,sans-serif; padding:11px 10px; border-radius:5px;
+    border:1px solid transparent; background:#1e293b; color:#cbd5e1;
+    cursor:pointer; transition:background .12s, transform .08s; width:100%;
+  }
+  .btn:hover:not(:disabled){background:#334155}
+  .btn:active:not(:disabled){transform:translateY(1px)}
+  .btn:disabled{opacity:.35; cursor:not-allowed}
+  .btn.on{background:rgba(34,211,238,.16); border-color:rgba(34,211,238,.55); color:var(--cyan)}
+  .btn.go{background:#0891b2; color:#fff}
+  .btn.go:hover:not(:disabled){background:#06b6d4}
+  .btn.danger{background:#9f1239; color:#fff}
+  .btn.danger:hover:not(:disabled){background:#be123c}
+  .stack{display:flex; flex-direction:column; gap:7px}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:7px}
+
+  .note{font-size:10px; color:var(--dim); line-height:1.45; margin:9px 0 0}
+
+  /* --- charts --- */
+  .chart-wrap{position:relative; height:230px}
+  canvas.chart{width:100%; height:100%; display:block}
+  .legend{display:flex; gap:14px; flex-wrap:wrap; margin-bottom:8px}
+  .legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px}
+  .legend span{font-family:var(--mono); font-size:10px; color:var(--dim)}
+
+  /* --- OTA --- */
+  input[type=file]{
+    width:100%; font-size:11px; color:var(--dim); font-family:var(--mono);
+    padding:8px; background:#0f172a; border:1px dashed var(--dimmer); border-radius:5px;
+  }
+  input[type=file]::file-selector-button{
+    font:600 11px system-ui,sans-serif; margin-right:10px; padding:6px 12px;
+    border:none; border-radius:4px; background:#334155; color:#cbd5e1; cursor:pointer;
+  }
+  .bar{height:7px; background:#0f172a; border-radius:4px; overflow:hidden; margin:10px 0 5px}
+  .bar>div{height:100%; width:0%; background:var(--cyan); transition:width .15s linear}
+  .bar.done>div{background:var(--green)}
+  .bar.err>div{background:var(--red)}
+  .ota-stat{font-family:var(--mono); font-size:10px; color:var(--dim); min-height:14px}
+
+  #hostbox{display:none; gap:6px; align-items:center}
+  #hostbox input{
+    font-family:var(--mono); font-size:11px; padding:4px 8px; width:130px;
+    background:#0f172a; color:var(--ink); border:1px solid var(--dimmer); border-radius:4px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">CUBLI <span>CONSOLE</span></div>
+  <div id="p-ws"   class="pill">○ WS</div>
+  <div id="p-uart" class="pill">○ UART</div>
+  <div id="p-armed" class="pill">DISARMED</div>
+  <div id="hostbox">
+    <input id="host" placeholder="172.20.10.14" spellcheck="false">
+    <button class="btn" style="width:auto;padding:5px 10px" onclick="saveHost()">connect</button>
+  </div>
+  <div class="spacer"></div>
+  <button id="estop" title="Disarm now (spacebar works too)">E-STOP</button>
+</header>
+
+<div id="flash-msg"></div>
+
+<main>
+  <!-- ══ LEFT: status + control + flashing ══ -->
+  <div class="col">
+
+    <div class="panel">
+      <h2>Battery</h2>
+      <div class="gauge">
+        <svg width="86" height="86" viewBox="0 0 86 86">
+          <circle cx="43" cy="43" r="35" fill="none" stroke="#1e293b" stroke-width="9"
+                  stroke-dasharray="165 220" transform="rotate(135 43 43)" stroke-linecap="round"/>
+          <circle id="g-arc" cx="43" cy="43" r="35" fill="none" stroke="#334155" stroke-width="9"
+                  stroke-dasharray="0 220" transform="rotate(135 43 43)" stroke-linecap="round"/>
+        </svg>
+        <div>
+          <div><span id="g-v" class="v">—</span><span class="u">V</span></div>
+          <div id="g-sub" class="sub">no data</div>
+        </div>
+      </div>
+      <p class="note">
+        Pack voltage as reported by the moteus controllers on the DC bus
+        (0.5 V steps). 6S: 25.2 V full, 22.2 V nominal, 18.0 V floor.
+      </p>
+    </div>
+
+    <div class="panel">
+      <h2>Balance mode</h2>
+      <div class="stack">
+        <button class="btn mode" data-m="0">IDLE</button>
+        <button class="btn mode" data-m="1">EDGE BALANCE</button>
+        <button class="btn mode" data-m="2">CORNER BALANCE</button>
+      </div>
+      <div class="row2" style="margin-top:9px">
+        <button id="b-arm" class="btn go" disabled>ARM</button>
+        <button id="b-resolve" class="btn">RE-RESOLVE</button>
+      </div>
+      <p class="note">
+        Every mode change transits through IDLE: wheels stopped, disarmed,
+        pivot re-resolved. ARM is two-step and the firmware still applies its
+        own tilt gate on top.
+      </p>
+    </div>
+
+    <div class="panel">
+      <h2>Wireless flash</h2>
+      <input type="file" id="hexfile" accept=".hex">
+      <div class="bar" id="ota-bar"><div></div></div>
+      <div class="ota-stat" id="ota-stat">no file selected</div>
+      <div class="row2" style="margin-top:9px">
+        <button id="b-stage" class="btn go" disabled>UPLOAD</button>
+        <button id="b-commit" class="btn danger" disabled>FLASH</button>
+      </div>
+      <button id="b-abort" class="btn" style="margin-top:7px" disabled>ABORT</button>
+      <p class="note">
+        UPLOAD streams the hex into the Teensy's staging flash and verifies
+        every record; FLASH commits it and reboots. Both are refused unless
+        the cube is IDLE and disarmed.
+      </p>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT: the two charts that matter ══ -->
+  <div class="col">
+    <div class="panel">
+      <h2>IMU tilt</h2>
+      <div class="legend" id="lg-tilt"></div>
+      <div class="chart-wrap"><canvas class="chart" id="c-tilt"></canvas></div>
+    </div>
+
+    <div class="panel">
+      <h2>Wheel speed</h2>
+      <div class="legend" id="lg-rpm"></div>
+      <div class="chart-wrap"><canvas class="chart" id="c-rpm"></canvas></div>
+    </div>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+const $ = (id) => document.getElementById(id);
+
+/* ===========================================================================
+ * Strip chart -- scrolling multi-series line plot on a 2D canvas.
+ *
+ * Deliberately tiny. Points are dropped off the left as they age out of the
+ * window, so memory is bounded by WINDOW_S * push rate regardless of how long
+ * the session runs. Y auto-scales to the data with a floor, so a cube sitting
+ * still doesn't get its noise amplified to fill the panel.
+ * ========================================================================= */
+const WINDOW_S = 10;
+
+class Strip {
+  constructor(canvas, unit, minSpan) {
+    this.cv = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.unit = unit;
+    this.minSpan = minSpan;   // smallest full-scale Y range, in `unit`
+    this.series = [];         // [{label,color,pts:[{t,v}]}]
+    this.t0 = null;
+    this.dirty = true;
+    new ResizeObserver(() => { this.resize(); }).observe(canvas);
+    this.resize();
+  }
+
+  setSeries(defs) {
+    this.series = defs.map((d) => ({ ...d, pts: [] }));
+    this.t0 = null;
+    this.dirty = true;
+  }
+
+  resize() {
+    // Backing store in device pixels, CSS box in layout pixels -- without this
+    // the lines are soft on any HiDPI screen.
+    const dpr = window.devicePixelRatio || 1;
+    const r = this.cv.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    this.cv.width = Math.round(r.width * dpr);
+    this.cv.height = Math.round(r.height * dpr);
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.w = r.width; this.h = r.height;
+    this.dirty = true;
+  }
+
+  push(tSec, values) {
+    if (this.t0 === null) this.t0 = tSec;
+    const t = tSec - this.t0;
+    for (let i = 0; i < this.series.length; i++) {
+      const v = values[i];
+      if (v === undefined || !Number.isFinite(v)) continue;
+      const p = this.series[i].pts;
+      p.push({ t, v });
+      while (p.length && p[0].t < t - WINDOW_S) p.shift();
+    }
+    this.tNow = t;
+    this.dirty = true;
+  }
+
+  clear() { for (const s of this.series) s.pts = []; this.t0 = null; this.dirty = true; }
+
+  draw() {
+    if (!this.dirty || !this.w) return;
+    this.dirty = false;
+    const { ctx, w, h } = this;
+    const padL = 46, padR = 8, padT = 8, padB = 20;
+    const iw = w - padL - padR, ih = h - padT - padB;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Y range from the data, symmetric about zero when the data straddles it.
+    let lo = Infinity, hi = -Infinity;
+    for (const s of this.series) for (const p of s.pts) { if (p.v < lo) lo = p.v; if (p.v > hi) hi = p.v; }
+    if (!Number.isFinite(lo)) { lo = -this.minSpan / 2; hi = this.minSpan / 2; }
+    if (lo > 0 && hi > 0) lo = 0; else if (lo < 0 && hi < 0) hi = 0;
+    let span = hi - lo;
+    if (span < this.minSpan) { const c = (hi + lo) / 2; lo = c - this.minSpan / 2; hi = c + this.minSpan / 2; span = this.minSpan; }
+    const pad = span * 0.12; lo -= pad; hi += pad; span = hi - lo;
+
+    const tMax = Math.max(WINDOW_S, this.tNow || 0), tMin = tMax - WINDOW_S;
+    const X = (t) => padL + ((t - tMin) / WINDOW_S) * iw;
+    const Y = (v) => padT + (1 - (v - lo) / span) * ih;
+
+    // grid + Y labels
+    ctx.font = "10px " + getComputedStyle(document.body).getPropertyValue("--mono");
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const v = lo + (span * i) / 4, y = Math.round(Y(v)) + 0.5;
+      ctx.strokeStyle = "rgba(56,189,248,.07)";
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+      ctx.fillStyle = "#475569";
+      ctx.fillText(fmtTick(v, span), padL - 6, y);
+    }
+    // zero line, if it is in range
+    if (lo < 0 && hi > 0) {
+      const y = Math.round(Y(0)) + 0.5;
+      ctx.strokeStyle = "rgba(148,163,184,.28)";
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+    }
+
+    ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillStyle = "#475569";
+    ctx.fillText("-" + WINDOW_S + "s", padL + 12, h - padB + 5);
+    ctx.fillText("now", w - padR - 12, h - padB + 5);
+    ctx.save();
+    ctx.translate(11, padT + ih / 2); ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(this.unit, 0, 0);
+    ctx.restore();
+
+    // traces, clipped to the plot box so a spike can't scribble on the axes
+    ctx.save();
+    ctx.beginPath(); ctx.rect(padL, padT, iw, ih); ctx.clip();
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    for (const s of this.series) {
+      if (s.pts.length < 2) continue;
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = s.width || 1.5;
+      ctx.beginPath();
+      let started = false;
+      for (const p of s.pts) {
+        const x = X(p.t), y = Y(p.v);
+        if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+function fmtTick(v, span) {
+  const d = span >= 100 ? 0 : span >= 10 ? 1 : span >= 1 ? 2 : 3;
+  return v.toFixed(d);
+}
+
+function legend(host, defs) {
+  host.innerHTML = defs.map((d) =>
+    `<span><i style="background:${d.color}"></i>${d.label}</span>`).join("");
+}
+
+const COL = { x: "#22d3ee", y: "#fbbf24", z: "#f472b6" };
+
+const tilt = new Strip($("c-tilt"), "deg", 2);
+const rpm  = new Strip($("c-rpm"), "RPM", 200);
+
+/* ===========================================================================
+ * Wire format
+ *
+ * The XIAO forwards the Teensy's telemetry line verbatim and we pick the
+ * schema by field count -- exactly the test dashboard/schemas.py makes, and
+ * for the same reason: the column layout is fixed per width and the first 19
+ * corner columns are identical across every corner variant.
+ * ========================================================================= */
+const SCHEMAS = {
+  10: { family: "edge",   armed: 5,  tilt: [1],       rpm: [7]       },
+  21: { family: "corner", armed: 19, tilt: [1, 2, 3], rpm: [7, 8, 9] },
+  26: { family: "corner", armed: 19, tilt: [1, 2, 3], rpm: [7, 8, 9] },
+  29: { family: "corner", armed: 19, tilt: [1, 2, 3], rpm: [7, 8, 9] },
+  33: { family: "corner", armed: 19, tilt: [1, 2, 3], rpm: [7, 8, 9] },
+  36: { family: "corner", armed: 19, tilt: [1, 2, 3], rpm: [7, 8, 9] },
+};
+
+const SERIES = {
+  edge: {
+    tilt: [{ label: "θ", color: COL.x, width: 1.8 }],
+    rpm:  [{ label: "wheel", color: COL.x, width: 1.8 }],
+  },
+  corner: {
+    tilt: [{ label: "φx", color: COL.x }, { label: "φy", color: COL.y }, { label: "φz", color: COL.z }],
+    rpm:  [{ label: "ρx", color: COL.x }, { label: "ρy", color: COL.y }, { label: "ρz", color: COL.z }],
+  },
+};
+
+let family = null;
+const RPM_PER_RADS = 60 / (2 * Math.PI);
+
+function applyFamily(f) {
+  if (f === family) return;
+  family = f;
+  tilt.setSeries(SERIES[f].tilt);
+  rpm.setSeries(SERIES[f].rpm);
+  legend($("lg-tilt"), SERIES[f].tilt);
+  legend($("lg-rpm"), SERIES[f].rpm);
+}
+
+function onTelemetry(v) {
+  const spec = SCHEMAS[v.length];
+  if (!spec) return;                       // unknown width -- ignore, don't guess
+  applyFamily(spec.family);
+  const t = v[0] / 1000;
+  tilt.push(t, spec.tilt.map((i) => v[i]));
+  rpm.push(t, spec.rpm.map((i) => v[i] * RPM_PER_RADS));
+  setArmed(v[spec.armed] !== 0);
+}
+
+/* ===========================================================================
+ * Status
+ * ========================================================================= */
+function pill(el, text, cls) { el.className = "pill" + (cls ? " " + cls : ""); el.textContent = text; }
+
+let armed = false, mode = null, wsUp = false, uartUp = false, otaPhase = "idle";
+
+function setArmed(a) {
+  if (a === armed) return;
+  armed = a;
+  pill($("p-armed"), a ? "▲ ARMED" : "DISARMED", a ? "bad blink" : "");
+  refreshButtons();
+}
+
+// 6S LiPo. Floor is the point below which the pack should come off the cube,
+// not a soft warning -- Electrical-Design-Guide.md quotes 18 V.
+const VFULL = 25.2, VNOM = 22.2, VFLOOR = 18.0;
+
+function setBattery(v) {
+  const arc = $("g-arc");
+  if (v === null || v === undefined || !Number.isFinite(v) || v <= 0.5) {
+    $("g-v").textContent = "—";
+    $("g-v").style.color = "var(--dim)";
+    $("g-sub").textContent = "no data";
+    arc.setAttribute("stroke-dasharray", "0 220");
+    return;
+  }
+  const frac = Math.max(0, Math.min(1, (v - VFLOOR) / (VFULL - VFLOOR)));
+  const col = v >= VNOM ? "var(--green)" : v >= VFLOOR + 1.2 ? "var(--amber)" : "var(--red)";
+  arc.setAttribute("stroke-dasharray", (165 * frac).toFixed(1) + " 220");
+  arc.setAttribute("stroke", col.startsWith("var") ? getVar(col) : col);
+  $("g-v").textContent = v.toFixed(1);
+  $("g-v").style.color = col;
+  $("g-sub").textContent = v >= VNOM ? "healthy"
+    : v >= VFLOOR + 1.2 ? Math.round(frac * 100) + "% to floor"
+    : "BELOW FLOOR — land it";
+}
+const getVar = (s) => getComputedStyle(document.body).getPropertyValue(s.slice(4, -1)).trim();
+
+function onSys(m) {
+  uartUp = !!m.uart;
+  pill($("p-uart"), uartUp ? `● UART ${m.rate || 0} Hz` : "○ UART", uartUp ? "live" : "");
+  if (m.vbat !== undefined) setBattery(m.vbat);
+  if (m.armed !== undefined) setArmed(!!m.armed);
+  if (m.mode !== undefined && m.mode !== null && m.mode !== mode) {
+    mode = m.mode;
+    document.querySelectorAll(".mode").forEach((b) =>
+      b.classList.toggle("on", +b.dataset.m === mode));
+  }
+  if (m.ota) { otaPhase = m.ota; }
+  refreshButtons();
+}
+
+function say(text, level) {
+  const el = $("flash-msg");
+  el.className = level || "info";
+  el.textContent = text;
+  clearTimeout(say._t);
+  if (level !== "bad") say._t = setTimeout(() => { el.className = ""; }, 8000);
+}
+
+/* ===========================================================================
+ * Socket
+ * ========================================================================= */
+let ws = null, pingTimer = null;
+
+function wsHost() {
+  if (location.protocol === "file:") return localStorage.getItem("cubli_host") || "";
+  return location.hostname;
+}
+function saveHost() {
+  const h = $("host").value.trim();
+  if (!h) return;
+  localStorage.setItem("cubli_host", h);
+  if (ws) ws.close();
+  connect();
+}
+
+function connect() {
+  const host = wsHost();
+  if (!host) { $("hostbox").style.display = "flex"; pill($("p-ws"), "○ set host", "warn"); return; }
+  // The XIAO's WebSocket server is a second listener on :81 -- the sync HTTP
+  // server owns :80 and cannot share the port with it.
+  ws = new WebSocket(`ws://${host}:81/`);
+
+  ws.onopen = () => {
+    wsUp = true;
+    pill($("p-ws"), "● WS", "ok");
+    // The deadman. 250 ms is well inside the XIAO's 500 ms stale window, which
+    // is itself inside the Teensy's 300 ms disarm timeout after the XIAO's
+    // keepalive stops. Losing this tab disarms the cube -- by design.
+    clearInterval(pingTimer);
+    pingTimer = setInterval(() => tx({ t: "ping" }), 250);
+    refreshButtons();
+  };
+
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.t === "tlm") onTelemetry(m.v);
+    else if (m.t === "sys") onSys(m);
+    else if (m.t === "log") say(m.s, m.lvl);
+    else if (m.t === "ota") onOta(m);
+  };
+
+  ws.onclose = () => {
+    wsUp = false; uartUp = false;
+    clearInterval(pingTimer);
+    pill($("p-ws"), "○ WS DOWN", "bad");
+    pill($("p-uart"), "○ UART", "");
+    setArmed(false);
+    refreshButtons();
+    setTimeout(connect, 1200);
+  };
+  ws.onerror = () => ws.close();
+}
+
+const tx = (o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+const cmd = (c) => tx({ t: "cmd", c });
+
+/* ===========================================================================
+ * Controls
+ * ========================================================================= */
+let armPending = false, armTimer = null;
+
+function refreshButtons() {
+  const idle = mode === 0;
+  const busy = otaPhase === "staging" || otaPhase === "committing";
+  $("estop").disabled = !wsUp;
+  $("b-arm").disabled = !wsUp || armed || mode === null || idle || busy;
+  $("b-resolve").disabled = !wsUp || armed || busy;
+  document.querySelectorAll(".mode").forEach((b) => { b.disabled = !wsUp || busy; });
+
+  $("b-stage").disabled = !wsUp || !hexFile || armed || !idle || busy;
+  $("b-commit").disabled = !wsUp || otaPhase !== "staged";
+  $("b-abort").disabled = !wsUp || otaPhase === "idle";
+}
+
+$("estop").onclick = () => {
+  // Three times, because a single UDP-ish drop must not be the difference
+  // between stopped and not. The Teensy treats repeats as idempotent.
+  cmd("a0"); setTimeout(() => cmd("a0"), 40); setTimeout(() => cmd("a0"), 90);
+  resetArm();
+  say("E-STOP sent — a0 ×3", "bad");
+};
+
+addEventListener("keydown", (e) => {
+  if (e.code === "Space" && !/^(INPUT|BUTTON|TEXTAREA)$/.test(e.target.tagName)) {
+    e.preventDefault();
+    $("estop").click();
+  }
+});
+
+$("b-arm").onclick = () => {
+  const b = $("b-arm");
+  if (!armPending) {
+    armPending = true;
+    b.textContent = "CONFIRM";
+    b.classList.add("danger");
+    armTimer = setTimeout(resetArm, 3000);
+    say("click ARM again within 3 s to arm", "warn");
+  } else {
+    cmd("a1");
+    resetArm();
+  }
+};
+function resetArm() {
+  clearTimeout(armTimer);
+  armPending = false;
+  const b = $("b-arm");
+  b.textContent = "ARM";
+  b.classList.remove("danger");
+}
+
+$("b-resolve").onclick = () => cmd(family === "edge" ? "e" : "c");
+
+document.querySelectorAll(".mode").forEach((b) => {
+  b.onclick = () => {
+    const m = +b.dataset.m;
+    tx({ t: "mode", m });
+    resetArm();
+    tilt.clear(); rpm.clear();
+  };
+});
+
+/* ===========================================================================
+ * OTA
+ *
+ * Two phases, matching what the hardware can actually promise:
+ *
+ *   UPLOAD  POST /ota/upload -- the XIAO streams hex records to the Teensy,
+ *           ACK-gated, and the Teensy checksums each record and writes it
+ *           into the FlasherX staging buffer (upper flash). TCP backpressure
+ *           is what keeps the browser from outrunning a 4 KB sector erase.
+ *   FLASH   POST /ota/commit -- check_flash_id() then flash_move(), reboot.
+ *
+ * The progress bar prefers the XIAO's own byte count over XHR's upload
+ * progress: XHR counts bytes handed to the socket, which runs ahead of what
+ * the Teensy has actually acknowledged by up to a TCP window.
+ * ========================================================================= */
+let hexFile = null;
+
+$("hexfile").onchange = (e) => {
+  hexFile = e.target.files[0] || null;
+  setBar(0, "");
+  $("ota-stat").textContent = hexFile
+    ? `${hexFile.name} — ${(hexFile.size / 1024).toFixed(0)} KB`
+    : "no file selected";
+  refreshButtons();
+};
+
+function setBar(pct, cls) {
+  const bar = $("ota-bar");
+  bar.className = "bar" + (cls ? " " + cls : "");
+  bar.firstElementChild.style.width = Math.max(0, Math.min(100, pct)) + "%";
+}
+
+function onOta(m) {
+  otaPhase = m.phase;
+  if (m.phase === "staging") {
+    setBar(m.total ? (m.sent / m.total) * 100 : 0, "");
+    $("ota-stat").textContent =
+      `staging ${(m.sent / 1024).toFixed(0)}/${(m.total / 1024).toFixed(0)} KB · ${m.lines || 0} records`;
+  } else if (m.phase === "staged") {
+    setBar(100, "done");
+    $("ota-stat").textContent = `staged ${m.lines || 0} records — press FLASH`;
+  } else if (m.phase === "error") {
+    setBar(100, "err");
+    $("ota-stat").textContent = "failed: " + (m.err || "unknown");
+    say("OTA failed: " + (m.err || "unknown"), "bad");
+  } else if (m.phase === "committing") {
+    $("ota-stat").textContent = "flashing — Teensy will reboot";
+    say("flash_move() called — Teensy rebooting into the new firmware", "info");
+  } else if (m.phase === "idle") {
+    setBar(0, "");
+    $("ota-stat").textContent = hexFile ? hexFile.name : "no file selected";
+  }
+  refreshButtons();
+}
+
+$("b-stage").onclick = () => {
+  if (!hexFile) return;
+  otaPhase = "staging"; refreshButtons();
+  setBar(0, "");
+  // multipart/form-data, because that is what the ESP32 WebServer's upload
+  // callback parses. Do NOT set Content-Type by hand -- the browser has to
+  // append the multipart boundary, and overriding it strips that.
+  const fd = new FormData();
+  fd.append("firmware", hexFile, hexFile.name);
+
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", `http://${wsHost()}/ota/upload`);
+  xhr.upload.onprogress = (e) => {
+    // Fallback only -- a 'staging' WS message overwrites this with the count
+    // the Teensy has really acknowledged.
+    if (e.lengthComputable && otaPhase === "staging") setBar((e.loaded / e.total) * 90, "");
+  };
+  xhr.onload = () => {
+    if (xhr.status === 200) { say("upload complete — verify the record count, then FLASH", "info"); }
+    else { onOta({ phase: "error", err: xhr.responseText || ("HTTP " + xhr.status) }); }
+  };
+  xhr.onerror = () => onOta({ phase: "error", err: "connection lost during upload" });
+  xhr.send(fd);
+};
+
+$("b-commit").onclick = () => {
+  if (!confirm("Flash the staged firmware and reboot the Teensy?\n\n"
+             + "The cube must be resting on a flat surface — it is uncontrolled "
+             + "during the reboot and gyro re-calibration.")) return;
+  fetch(`http://${wsHost()}/ota/commit`, { method: "POST" }).catch(() => {});
+};
+
+$("b-abort").onclick = () => {
+  fetch(`http://${wsHost()}/ota/abort`, { method: "POST" }).catch(() => {});
+};
+
+/* ===========================================================================
+ * Boot
+ * ========================================================================= */
+applyFamily("corner");           // provisional until the first packet says otherwise
+setBattery(null);
+refreshButtons();
+
+if (location.protocol === "file:") {
+  $("hostbox").style.display = "flex";
+  $("host").value = localStorage.getItem("cubli_host") || "";
+}
+
+(function frame() { tilt.draw(); rpm.draw(); requestAnimationFrame(frame); })();
+connect();
+</script>
+</body>
+</html>
