@@ -67,12 +67,22 @@
 //   g<0..1>   gain scale
 //   c         re-resolve corner candidate      (corner mode)
 //   e         re-resolve edge candidate        (edge mode)
-//   o<deg>    edge tilt trim                   (edge mode)
+//   o<deg>    edge tilt trim, ON TOP of kEdgePhiOffsetDefaultDeg (edge mode)
+//   p<0..3>   LQR tilt-term gain scale  (this mode's own copy, see below)
+//   r<0..3>   LQR rate-term gain scale  (   "      "    "     "    "   )
+//   w<0..3>   LQR wheel-term gain scale (   "      "    "     "    "   )
 //   h<0/1>    HALT / resume
 //   d<N>      telemetry decimation, 1..100, applies to the current mode
 //   l<0/1>    link mode: l0 = telemetry on USB, l1 = telemetry on Serial1
 //   k         keepalive no-op (feeds the link watchdog)
 //   s         print the state line
+//
+// p/r/w EACH MODE KEEPS ITS OWN THREE SCALES, default 1.0 (unscaled hardcoded
+// law), applied at the point of use in commandWheelsCorner() / commandWheel
+// Edge() -- the underlying gain tables are never modified. Setting one while
+// the OTHER mode is staged is not refused, unlike c/e/o: it just stores the
+// value for when you switch there, same as "o<deg>" already persists across
+// a mode switch. A reflash always starts every scale back at 1.0.
 //
 // TWO GRAMMAR COLLISIONS WERE RESOLVED, AND BOTH CAN BITE:
 //
@@ -686,7 +696,28 @@ float gOmEdge  = 0.0f;
 // This is the edge counterpart of kCornerPhiOffset above and they are NOT
 // interchangeable -- one is a live scalar the operator tunes, the other a
 // compile-time 3-vector. Both were called kPhiOffset in their source files.
-static float gEdgePhiOffsetRad = 0.0f;
+//
+// HARDCODED DEFAULT: -0.7 deg, bench-measured resting offset for the Y-axis
+// edge (gEdgeAxis's default). Unlike kCornerPhiOffset, this is NOT the product
+// of a long converged auto-trim hold -- there is no edge auto-trim mechanism
+// yet (deliberately not built -- see the project notes). It is just the
+// number that used to get typed in by hand with "o-0.7" every session, now
+// baked in as the boot default instead. Re-measure and update this constant
+// if the mount changes; "o<deg>" still works live on top of it for the same
+// reason it always did (per-axis drift, a knob you shouldn't need every
+// session but might occasionally).
+//
+// dashboard/schemas.py mirrors this value (EDGE_PHI_OFFSET_DEFAULT_DEG) for
+// its "reset to default" button -- there is no protocol that carries this
+// constant from firmware to dashboard, so if you change the number here,
+// change it there too or the button will send the wrong value.
+static const float kEdgePhiOffsetDefaultDeg = -0.7f;
+
+// enterMode() deliberately does NOT reset this on a mode switch (see its body
+// below) -- it is meant to survive m0/m1 within one boot session exactly like
+// it survived nothing before. Only a reflash (back to the constant above) or
+// an explicit "o<deg>" changes it.
+static float gEdgePhiOffsetRad = kEdgePhiOffsetDefaultDeg * (float)DEG_TO_RAD;
 
 void updateEdgeProjection() {
   const EdgeCandidate& c = kCandidates[gEdgeAxis][gEdgeIdx];
@@ -756,6 +787,29 @@ static const float kEpsFf  = 0.05f;    // rad/s, tanh width
 // bench check. Until then the dashboard assumes the conservative 0.50 deg and
 // is the tighter of the two.
 static const float kEdgeArmGate = 0.1672664619f;   // rad, 9.58 deg -- SEE ABOVE
+
+// ----------------------------------------------------------------------------
+// LIVE LQR GAIN SCALES -- tuning knobs, not calibration
+// ----------------------------------------------------------------------------
+// Three multiplicative scale factors per mode, grouped by physical term
+// (tilt / rate / wheel-speed) rather than exposed per matrix element -- the
+// corner law's Kp is a full 3x9 matrix PER CORNER (216 numbers across all
+// eight), so per-element control was never a serious option. A scale per
+// term, applied uniformly to whichever corner/edge candidate is currently
+// resolved, is. The underlying kCorners[...].Kp / kCandidates[...].K tables
+// are read-only and UNTOUCHED -- these scales are applied at the point of use
+// in commandWheelsCorner() / commandWheelEdge(), not baked back into the
+// tables. That is also why nothing special is needed to make "reflash resets
+// to hardcoded" true: these are fresh globals, default 1.0, so a fresh boot
+// IS the unscaled hardcoded law with no extra logic required.
+//
+// Commands (mode-gated like c/e/o, refused on the wrong mode): p<val> tilt,
+// r<val> rate, w<val> wheel. Same three letters in both modes since only one
+// mode is ever active. Clamped to kGainScaleTermMax so a typo can't silently
+// multiply torque output by an order of magnitude.
+static float gCornerKPhiScale = 1.0f, gCornerKOmScale = 1.0f, gCornerKRhoScale = 1.0f;
+static float gEdgeKPhiScale   = 1.0f, gEdgeKOmScale   = 1.0f, gEdgeKRhoScale   = 1.0f;
+static const float kGainScaleTermMax = 3.0f;   // sanity clamp, not a validated bound
 
 // Per-axis: all three confirmed via each axis's own Stage 1 pulse test.
 // Re-verify per axis rather than assuming if the mount or wiring changes
@@ -894,11 +948,19 @@ void commandWheelsCorner(const float rho[3]) {
     rho[0], rho[1], rho[2],
   };
 
+  // Per-term live scale, applied at the point of use -- see the "LIVE LQR
+  // GAIN SCALES" note in SECTION 5. kCorners[...].Kp itself is never modified.
+  const float termScale[9] = {
+    gCornerKPhiScale, gCornerKPhiScale, gCornerKPhiScale,
+    gCornerKOmScale,  gCornerKOmScale,  gCornerKOmScale,
+    gCornerKRhoScale, gCornerKRhoScale, gCornerKRhoScale,
+  };
+
   float tau[3];
   for (int i = 0; i < 3; ++i) {
     const float* row = kCorners[gCornerIdx].Kp[i];
     float u = 0.0f;
-    for (int j = 0; j < 9; ++j) { u -= row[j] * xVec[j]; }
+    for (int j = 0; j < 9; ++j) { u -= row[j] * termScale[j] * xVec[j]; }
     u *= gGainScale;
     u += kTauCw * tanhf(rho[i] / kEpsFf) + kBw * rho[i];
 
@@ -956,7 +1018,11 @@ void commandWheelEdge(float wheel_omega) {
   const EdgeCandidate& c = kCandidates[gEdgeAxis][gEdgeIdx];
   const float wheelSign = kAxisWheelSign[gEdgeAxis];
 
-  float tau = -(c.K[0] * gPhiEdge + c.K[1] * gOmEdge + c.K[2] * wheel_omega) * gGainScale;
+  // Per-term live scale, applied at the point of use, same pattern as
+  // commandWheelsCorner() -- c.K itself is never modified.
+  float tau = -(c.K[0] * gEdgeKPhiScale * gPhiEdge
+              + c.K[1] * gEdgeKOmScale  * gOmEdge
+              + c.K[2] * gEdgeKRhoScale * wheel_omega) * gGainScale;
   tau += kTauCw * tanhf(wheel_omega / kEpsFf) + kBw * wheel_omega;
 
   const bool spinning_up = (tau >= 0.0f) == (wheel_omega >= 0.0f);
@@ -1139,6 +1205,28 @@ void handleCommandLine(const char* line, Stream& echo) {
       echo.println("# 'o' is edge-only -- corner uses a compile-time offset");
     }
 
+  } else if (cmd == 'p' || cmd == 'r' || cmd == 'w') {
+    // Live LQR gain-term scales -- see the SECTION 5 note. Unlike c/e/o these
+    // have NO wrong mode: corner and edge each keep their own three scales at
+    // all times, so setting one while the other mode is staged just stores it
+    // for when you switch there, the same way "o<deg>" already persists
+    // across a mode switch. Nothing to refuse.
+    const float scale = val < 0.0f ? 0.0f
+                       : (val > kGainScaleTermMax ? kGainScaleTermMax : val);
+    float* target;
+    const char* label;
+    if (gMode == BalanceMode::CORNER) {
+      target = (cmd == 'p') ? &gCornerKPhiScale
+              : (cmd == 'r') ? &gCornerKOmScale : &gCornerKRhoScale;
+      label  = (cmd == 'p') ? "corner tilt" : (cmd == 'r') ? "corner rate" : "corner wheel";
+    } else {
+      target = (cmd == 'p') ? &gEdgeKPhiScale
+              : (cmd == 'r') ? &gEdgeKOmScale : &gEdgeKRhoScale;
+      label  = (cmd == 'p') ? "edge tilt" : (cmd == 'r') ? "edge rate" : "edge wheel";
+    }
+    *target = scale;
+    echo.print("# "); echo.print(label); echo.print(" gain scale = "); echo.println(scale, 3);
+
   } else if (cmd == 'h') {
     gHalted = (val != 0.0f);
     if (gHalted) { disarm("halt"); }
@@ -1167,8 +1255,9 @@ void handleCommandLine(const char* line, Stream& echo) {
   } else {
     echo.println("# unknown. use: a<0/1> (arm)  m<0/1> (mode edge/corner)  "
                   "g<0..1> (gain)  c (corner resolve)  e (edge resolve)  "
-                  "o<deg> (edge trim)  h<0/1> (halt)  d<N> (decim)  "
-                  "l<0/1> (link)  s (state)  k (keepalive)");
+                  "o<deg> (edge trim)  p/r/w<0..3> (LQR tilt/rate/wheel scale)  "
+                  "h<0/1> (halt)  d<N> (decim)  l<0/1> (link)  s (state)  "
+                  "k (keepalive)");
   }
 }
 
@@ -1295,6 +1384,11 @@ void setup() {
   gBoot.print(  "# EDGE HAS A GATE at ");
   gBoot.print(kEdgeArmGate * (float)RAD_TO_DEG, 2);
   gBoot.println(" deg -- KNOWN SUSPECT, see SECTION 5.");
+  gBoot.print(  "#   Edge offset boots at kEdgePhiOffsetDefaultDeg = ");
+  gBoot.print(kEdgePhiOffsetDefaultDeg, 2);
+  gBoot.println(" deg; o<deg> still overrides it live.");
+  gBoot.println("# p/r/w<0..3> live-scale this mode's LQR tilt/rate/wheel gain");
+  gBoot.println("#   terms (default 1.0 = unscaled hardcoded law, per mode).");
   gBoot.println("# Velocity caps are loose in BOTH modes -- a0 (disarm) is the");
   gBoot.println("#   real safety net, along with kMaxTilt's 25 deg auto-trip.");
   gBoot.println("# h1 halts (idle + disarm), h0 resumes (still disarmed).");

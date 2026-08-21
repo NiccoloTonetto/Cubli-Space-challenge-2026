@@ -130,6 +130,18 @@ BY_FIELD_COUNT = {SCHEMAS[k]["n"]: k for k in SCHEMAS}
 assert len(BY_FIELD_COUNT) == len(SCHEMAS), "two schemas share a field count"
 
 
+# ---------------------------------------------------------------------------
+# Edge phi offset -- mirrors CubliBalance.ino's kEdgePhiOffsetDefaultDeg
+#
+# There is no protocol message that carries this constant from firmware to
+# dashboard -- it is just a number both sides happen to agree on. If the
+# firmware's hardcoded default ever changes, THIS must be edited to match, or
+# the UI's "reset to default" button will send the wrong value.
+# ---------------------------------------------------------------------------
+
+EDGE_PHI_OFFSET_DEFAULT_DEG = -0.7
+
+
 def split_fields(line):
     """Split a telemetry line, tab or comma.
 
@@ -372,16 +384,36 @@ _LINK = r"[tx][01]"                              # Teensy link mode / XIAO mode
 # an unknown letter is answered with a usage line, never acted on.
 _MODE = r"m[01]|s"
 
+# p/r/w<0..3>: CubliBalance.ino's live LQR tilt/rate/wheel gain-term scales
+# (see its SECTION 5 note). Both modes accept all three letters -- there is no
+# "wrong mode" to refuse, each mode keeps its own copy of the three scales, so
+# setting one while the other mode is staged just stores it for later. Range
+# isn't enforced here (the firmware clamps to kGainScaleTermMax); the
+# whitelist only needs to accept the shape. Signed (like the archive board's
+# original r<val> pattern below) even though p/r/w gain scales are clamped
+# non-negative firmware-side -- the clamp is the real boundary, matching how
+# gGainScale's own clamp works; the whitelist stays permissive rather than
+# guessing which firmware is listening.
+#
+# NOTE: 'r' already existed below, inside "autotrim", as the archive AutoTrim
+# board's log-marker letter (unrelated meaning, r<val> = a marker value to
+# stamp into that board's log). CubliBalance.ino's corner mode does not
+# implement a log marker; on THIS firmware 'r' is the rate-term gain scale.
+# The whitelist doesn't need to disambiguate -- the shape is identical either
+# way, and it's whichever firmware is actually running that decides what the
+# letter does.
+_GAINTERM = r"[prw]-?\d+(?:\.\d+)?"
+
 CMD_OK = {
     # legacy 21-column corner: halt is p, z tares
     "legacy": re.compile(r"^(?:a[01]|" + _GAIN + r"|c|z[01]|p[01]|" + _LINK + r")$"),
     # AutoTrim / Stage5 / CubliBalance corner mode: halt is h, trim replaces
     # the manual z tare, plus the WiFi-only controls on letters no corner stage
     # uses (l link, d decim) and the trim knobs (y freeze, n adapt gain,
-    # f filter Hz, r log marker).
+    # f filter Hz, r log marker on the archive board / rate-scale on CubliBalance).
     "autotrim": re.compile(
         r"^(?:a[01]|" + _GAIN + r"|c|h[01]|y[01]|n[\d.eE+-]+|f\d+(?:\.\d+)?"
-        r"|d\d{1,3}|r-?\d+(?:\.\d+)?|l[01]|" + _MODE + r"|" + _LINK + r")$"),
+        r"|d\d{1,3}|l[01]|" + _MODE + r"|" + _LINK + r"|" + _GAINTERM + r")$"),
     # CubliBalance edge mode. Two changes vs the standalone EdgeBalance_WiFi
     # grammar: link mode moved from 't' to the corner build's 'l' (the fusion
     # kept one letter, not both), and halt/decim exist here because the fused
@@ -389,7 +421,7 @@ CMD_OK = {
     # 't' stays only inside _LINK for the XIAO's own passthrough.
     "edge": re.compile(
         r"^(?:a[01]|" + _GAIN + r"|o-?\d+(?:\.\d+)?|e|h[01]|d\d{1,3}|l[01]"
-        r"|" + _MODE + r"|" + _LINK + r")$"),
+        r"|" + _MODE + r"|" + _LINK + r"|" + _GAINTERM + r")$"),
 }
 
 

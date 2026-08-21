@@ -137,7 +137,7 @@ XIAO.
 
 | Route | UI |
 |---|---|
-| `/` | Minimal console — arm/disarm, mode switch, status, charts, 3D view |
+| `/` | Minimal console — arm/disarm, mode switch, status, charts, LQR gain sliders |
 | `/classic` | The previous Tailwind dashboard, kept as a fallback |
 
 Useful flags:
@@ -177,7 +177,9 @@ Full grammar in `docs/COMMANDS.md`. The short version:
 | Re-resolve pivot | `c` (corner) / `e` (edge) |
 | Halt / Resume | `h1` / `h0` |
 | Gain slider | `g<0..1>` |
-| Edge trim | `o<deg>` (edge mode only) |
+| Edge trim | `o<deg>` (edge mode only) — **on top of** the hardcoded `-0.7°` default |
+| Reset trim to default | sends `o-0.70` (edge mode only) |
+| Tilt / Rate / Wheel gain sliders | `p<0..3>` / `r<0..3>` / `w<0..3>` — live-scale this mode's own LQR gain terms, default `1.0`. No 3D view any more; these sliders + the trimmed Tilt/Wheel charts replaced it. |
 
 A typical corner session:
 
@@ -191,6 +193,15 @@ place the cube on the corner  →  CORNER  →  Re-resolve  →  gain 0.5  →  
 
 Cube **held by hand**, wheels clear, `g0.3`, a finger on the spacebar. Same
 XIAO firmware and same dashboard throughout — only the Teensy sketch changes.
+
+> ⚠ `CubliCorner` and `CubliEdge` are **frozen verbatim copies** of the archive
+> reference sketches — they predate the hardcoded `-0.7°` edge offset and the
+> `p`/`r`/`w` LQR gain sliders, and always will (that's the point of keeping
+> them as a faithful reference). `CubliEdge` still boots at `o0` and `CubliBalance`
+> now boots at `o-0.70`, so **Round 2 and Round 3's edge `|φ|` will legitimately
+> differ by about 0.7°** — that is the new default doing its job, not a fusion
+> bug. Send `o0` on `CubliBalance` first if you want a true apples-to-apples
+> comparison against Round 2.
 
 **Round 1 — `CubliCorner`.** Place on the corner → Re-resolve → note the
 resolved corner name and the resting `|φ|` → ARM briefly → DISARM. Record those
@@ -301,6 +312,8 @@ too. A mismatch is silent and looks exactly like a dead cable.
 | Edge arm gate reads 9.58°, comment says 0.5° | Carried forward verbatim on purpose; suspected typo, fix it deliberately with a bench check |
 | Corner mode has no arm gate at all | By design. Operator discipline, not a bug |
 | `gEdgeAxis` has no command letter | Edge mode is Y-only in practice |
+| Edge offset (`-0.7°`) is hand-measured, not converged | No live auto-trim exists for edge yet (deliberately not built); re-measure and update `kEdgePhiOffsetDefaultDeg` by hand if the mount changes |
+| `p`/`r`/`w` gain scales have no live readback | The UI shows the last value you sent, not a value read from the cube — same limitation the gain and trim controls already had |
 | Battery gauge | No wire format carries voltage; the UI shows link health instead |
 | Velocity caps | Bring-up values in both modes, not the Stage 5 policy numbers |
 

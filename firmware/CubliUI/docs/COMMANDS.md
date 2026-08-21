@@ -21,12 +21,52 @@ grammar and no per-sketch column to check.
 | `g<0..1>` | both | Gain scale, e.g. `g0.5` = half authority |
 | `c` | corner | Re-resolve which **corner** is down |
 | `e` | edge | Re-resolve which **edge** is down |
-| `o<deg>` | edge | Edge tilt trim, e.g. `o0.25` |
+| `o<deg>` | edge | Edge tilt trim, **on top of** the hardcoded `-0.7°` default, e.g. `o0.25` |
+| `p<0..3>` | both | LQR **tilt**-term gain scale — this mode's own copy, default `1.0` |
+| `r<0..3>` | both | LQR **rate**-term gain scale — this mode's own copy, default `1.0` |
+| `w<0..3>` | both | LQR **wheel**-term gain scale — this mode's own copy, default `1.0` |
 | `h1` / `h0` | both | **HALT / resume** — halt also disarms |
 | `d<N>` | both | Telemetry decimation for the **current** mode (`d2` = 250 Hz) |
 | `l1` / `l0` | both | Choose output stream (WiFi / USB) |
 | `s` | both | Print the state line |
 | `k` | both | No-op heartbeat |
+
+### `p` / `r` / `w` — live LQR gain scaling
+
+Three multiplicative scale factors, grouped by physical term rather than by
+raw matrix entry (corner's gain is a full 3×9 matrix per corner — 216 numbers
+across all eight corners, so per-element control was never practical):
+
+- **Tilt** (`p`) scales the phi/position-error columns
+- **Rate** (`r`) scales the body-rate/angular-velocity columns
+- **Wheel** (`w`) scales the wheel-speed columns
+
+Applied at the point of use in `commandWheelsCorner()` / `commandWheelEdge()`
+— the underlying hardcoded gain tables (`kCorners[...].Kp`,
+`kCandidates[...].K`) are **never modified**. Corner and edge each keep their
+own three scales at all times: unlike `c`/`e`/`o`, there is no wrong mode to
+refuse — setting `p2.0` while corner is staged just waits there for when you
+switch back to it, the same way `o<deg>` already survives a mode switch.
+
+**Every scale resets to `1.0` (the unscaled hardcoded law) on every reflash.**
+Values are clamped to `0.0`–`3.0` firmware-side, so a typo can't silently
+multiply torque output by an order of magnitude — but the range itself is a
+starting sanity bound, not a validated tuning envelope.
+
+### The edge offset is now hardcoded, like corner's
+
+Edge boots with `gEdgePhiOffsetRad` set from `kEdgePhiOffsetDefaultDeg =
+-0.7°` — the number that used to get typed by hand with `o-0.7` every
+session. `o<deg>` still works exactly as before, live, on top of that
+baseline; it is **not** reset by a mode switch, only by a reflash (back to
+`-0.7°`) or another explicit `o<deg>`. The dashboard's edge panel has a
+**"Reset to default"** button that just sends `o-0.70` — the same command,
+not a special one.
+
+Unlike corner's offset, this number was **not** derived from a converged
+adaptive-trim hold — there is no live-adapting mechanism for edge yet
+(deliberately not built). Re-measure and update the constant by hand if the
+mount changes.
 
 A mode-specific letter sent in the wrong mode answers with a one-line refusal
 naming the mode it belongs to. It is never silently swallowed — a command that

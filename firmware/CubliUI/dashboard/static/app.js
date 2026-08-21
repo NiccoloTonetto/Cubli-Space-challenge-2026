@@ -13,9 +13,11 @@
  *
  * The previous Tailwind dashboard is preserved at /classic -- see
  * classic/app.js.
+ *
+ * NO 3D VIEW HERE (removed on request) -- see index.html's header comment.
+ * The pivot readout box still shows the resolved corner/edge name, just not
+ * animated.
  */
-
-import { initCube } from "/static/cube_vis.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -31,7 +33,6 @@ let haltCmd = null;         // 'h' on the fused build; 'p' on the legacy corner
 let armPolicy = "gate";     // 'gate' -> block above the gate; 'warn' -> warn only
 let charts = [];            // [{chart, series:[{key,idx}], t0}]
 let lastChartPush = -1e9;
-let cube = null;
 let pivot = null;
 let armGate = 0.5;
 let envelope = 3.0;
@@ -71,34 +72,28 @@ function chartOpts(unit) {
   };
 }
 
-/** Column layouts, mirroring the panel split the matplotlib scripts use. */
+/** Column layouts, mirroring the panel split the matplotlib scripts use.
+ *
+ * TILT + WHEEL ONLY (on request) -- body rate and torque were dropped. Those
+ * columns still exist in telemetry and in recorded CSVs; only these two live
+ * charts were trimmed. This is also directly useful next to the LQR gain
+ * sliders in the Control panel: tilt and wheel-speed are exactly what you
+ * watch respond as you drag Tilt/Rate/Wheel gain. /classic still shows all
+ * four if you want them. */
 const LAYOUTS = {
   corner: [
     { title: "Tilt φ", unit: "deg", series: [
       { label: "φx", idx: 1, color: COL.x }, { label: "φy", idx: 2, color: COL.y },
       { label: "φz", idx: 3, color: COL.z }, { label: "|φ|", idx: -1, color: COL.k, width: 2 }] },
-    { title: "Body rate ω", unit: "deg/s", series: [
-      { label: "ωx", idx: 4, color: COL.x }, { label: "ωy", idx: 5, color: COL.y },
-      { label: "ωz", idx: 6, color: COL.z }] },
     { title: "Wheels ρ (dashed = 5 s low-pass)", unit: "rad/s", series: [
       { label: "ρx", idx: 7, color: COL.x }, { label: "ρy", idx: 8, color: COL.y },
       { label: "ρz", idx: 9, color: COL.z },
       { label: "ρx_lp", idx: 10, color: COL.x, dash: [4, 3] },
       { label: "ρy_lp", idx: 11, color: COL.y, dash: [4, 3] },
       { label: "ρz_lp", idx: 12, color: COL.z, dash: [4, 3] }] },
-    { title: "Torque τ (dashed = commanded)", unit: "N·m", series: [
-      { label: "τx", idx: 13, color: COL.x }, { label: "τy", idx: 14, color: COL.y },
-      { label: "τz", idx: 15, color: COL.z },
-      { label: "τx_cmd", idx: 16, color: COL.x, dash: [4, 3] },
-      { label: "τy_cmd", idx: 17, color: COL.y, dash: [4, 3] },
-      { label: "τz_cmd", idx: 18, color: COL.z, dash: [4, 3] }] },
   ],
   edge: [
     { title: "Tilt θ", unit: "deg", series: [{ label: "θ", idx: 1, color: COL.x, width: 2 }] },
-    { title: "Tilt rate θ̇", unit: "deg/s", series: [{ label: "θ̇", idx: 2, color: COL.y }] },
-    { title: "Torque τ (dashed = commanded)", unit: "N·m", series: [
-      { label: "τ", idx: 3, color: COL.x },
-      { label: "τ_cmd", idx: 4, color: COL.y, dash: [4, 3] }] },
     { title: "Wheel", unit: "rad/s · rev/s", series: [
       { label: "ω_lp", idx: 7, color: COL.x }, { label: "vel", idx: 9, color: COL.z }] },
   ],
@@ -180,7 +175,6 @@ function updateTiles(row) {
     $("m-b").innerHTML = trio(row[4], row[5], row[6], 1);
     $("m-c").innerHTML = trio(RPM(row[7]), RPM(row[8]), RPM(row[9]), 0);
     $("m-d").innerHTML = trio(row[13], row[14], row[15], 4);
-    if (cube) cube.update([row[1], row[2], row[3]], [row[7], row[8], row[9]]);
   } else {
     phiNorm = Math.abs(row[1]);
     $("m-a").innerHTML = `<span style="color:${COL.x}">${f(row[1], 3)}</span>`;
@@ -188,7 +182,6 @@ function updateTiles(row) {
     $("m-c").innerHTML = `<span style="color:${COL.x}">${f(RPM(row[7]), 0)}</span>`;
     $("m-d").innerHTML = `<span style="color:${COL.x}">${f(row[3], 4)}</span> / ` +
                          `<span style="color:${COL.y}">${f(row[4], 4)}</span>`;
-    if (cube) cube.update([row[1]], [0, 0, 0], pivot && pivot.e);
   }
 
   // |phi| is shown against whichever threshold actually matters for this mode:
@@ -244,11 +237,20 @@ function applyStatus(st) {
   pill($("pill-state"), stateText, armed ? "bad" : st.halted ? "warn" : "");
   $("pill-state").classList.toggle("blink", armed);
 
+  // Session totals, not per-file counts -- recorded_rows resets to 0 at
+  // every mode-switch file roll (a fresh CSV starts empty), which used to
+  // read as "it stopped". recorded_rows_session/recorded_files never reset
+  // mid-session, so THIS is what actually proves a Start...Stop bracket
+  // survived a mode switch rather than restarting.
   const rec = $("pill-rec");
   rec.classList.toggle("hide", !st.recording);
-  if (st.recording) pill(rec, `REC ${st.recorded_rows}`, "warn");
+  if (st.recording) pill(rec, `REC ${st.recorded_rows_session}`, "warn");
   $("rec-status").textContent = st.recording
-    ? `${st.recording} — ${st.recorded_rows} rows` : "idle";
+    ? `${st.recording} — ${st.recorded_rows_session} rows` +
+      (st.recorded_files > 1 ? ` across ${st.recorded_files} files` : "")
+    : "idle";
+  $("btn-rec-start").disabled = !!st.recording || st.read_only;
+  $("btn-rec-stop").disabled  = !st.recording;
 
   // ---- status panel ----
   const big = $("st-state");
@@ -288,14 +290,11 @@ function applyStatus(st) {
   // ---- pivot ----
   if (st.pivot && (!pivot || pivot.name !== st.pivot.name)) {
     pivot = st.pivot;
-    $("pivot-label").textContent = pivot.name;
-    $("pivot-sub").textContent = pivot.gB
-      ? `${pivot.kind} · place offset ${f(pivot.place_offset_deg, 3)}°`
-      : "unrecognised — no highlight";
     $("pivot-kind").textContent = pivot.kind === "edge" ? "Edge" : "Corner";
-    $("pivot-val").textContent = pivot.name;
+    $("pivot-val").textContent = pivot.gB
+      ? `${pivot.name} · place offset ${f(pivot.place_offset_deg, 3)}°`
+      : `${pivot.name} (unrecognised)`;
     $("pivot-readout").classList.remove("stale");
-    if (cube) cube.setPivot(pivot, family);
   }
 
   // ---- mode buttons ----
@@ -480,6 +479,34 @@ $("btn-trim-set").onclick = () => {
   if (Number.isFinite(v)) cmd("o" + v.toFixed(2));
 };
 
+// Reset to the SAME hardcoded default the firmware boots with -- not a
+// separate command, just "o<that number>". Keep this literal in sync with
+// CubliBalance.ino's kEdgePhiOffsetDefaultDeg and schemas.py's
+// EDGE_PHI_OFFSET_DEFAULT_DEG if either ever changes.
+const EDGE_PHI_OFFSET_DEFAULT_DEG = -0.7;
+$("key-trim-default").textContent = "o" + EDGE_PHI_OFFSET_DEFAULT_DEG.toFixed(2);
+$("btn-trim-default").onclick = () => {
+  $("trim-val").value = EDGE_PHI_OFFSET_DEFAULT_DEG.toFixed(2);
+  cmd("o" + EDGE_PHI_OFFSET_DEFAULT_DEG.toFixed(2));
+};
+
+// LQR gain-term scales. Same debounce as the main gain slider; both modes'
+// letters are always sent (the firmware refuses nothing here -- it just
+// keeps two independent copies, see CubliBalance.ino SECTION 5), so these
+// sliders stay live regardless of which mode is currently staged.
+function wireGainScale(sliderId, valId, letter) {
+  let timer = null;
+  $(sliderId).oninput = (e) => {
+    const v = parseFloat(e.target.value);
+    $(valId).textContent = v.toFixed(2);
+    clearTimeout(timer);
+    timer = setTimeout(() => cmd(letter + v), 120);
+  };
+}
+wireGainScale("p-scale", "p-val", "p");
+wireGainScale("r-scale", "r-val", "r");
+wireGainScale("w-scale", "w-val", "w");
+
 $("btn-rec-start").onclick = () => send({ type: "record", action: "start" });
 $("btn-rec-stop").onclick  = () => send({ type: "record", action: "stop" });
 $("btn-clear").onclick = () => { $("console").innerHTML = ""; };
@@ -495,17 +522,6 @@ addEventListener("keydown", (e) => {
 // ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
-
-// A blank 3D panel and a broken 3D panel look identical, so say which it is.
-try {
-  cube = initCube($("cube"));
-} catch (err) {
-  const box = $("cube-error");
-  box.classList.add("show");
-  box.textContent = "3D view unavailable: " + err.message +
-    " — charts and controls still work.";
-  console.error("[cubli] initCube failed", err);
-}
 
 buildCharts("corner");
 setTileLabels("corner");

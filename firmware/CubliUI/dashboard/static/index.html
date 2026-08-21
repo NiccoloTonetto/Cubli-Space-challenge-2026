@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cubli — Balance Console</title>
+<title>Armonia — Balance Console</title>
 <!--
   Cubli laptop dashboard. Served by ../app.py at http://127.0.0.1:8000.
 
@@ -28,11 +28,23 @@
   holds both control laws; EDGE/CORNER below send m0/m1 and the cube switches
   at runtime. It always force-disarms first and lands DISARMED, so arming
   again is a separate, deliberate press.
+
+  NO 3D VIEW HERE. The attitude cube (Three.js) was dropped from this page on
+  request -- the resolved-pivot readout below carries the same information
+  (name, kind, place offset) without the animation. /classic still has the 3D
+  view if you want it back for a session.
+
+  RECORDING SPANS MODE SWITCHES. One Start...Stop bracket is one session even
+  if you switch EDGE/CORNER in between -- the server keeps writing the whole
+  time, it just has to roll to a new file at the switch (the two telemetry
+  widths cannot share one CSV header). See app.py's csv_thread and the
+  "record" branch of handle_client_message for exactly how that's tracked.
+
+  TILES + CHARTS + CONSOLE STAY IN VIEW while the left column scrolls -- see
+  the sticky rule on .col:last-child below. Only applies at desktop widths;
+  narrow viewports stack normally.
 -->
 <script src="/static/vendor/chart.umd.min.js"></script>
-<script type="importmap">
-{ "imports": { "three": "/static/vendor/three.module.min.js" } }
-</script>
 
 <style>
   /* Latin subset of Montserrat Variable, ~20 KB. local() first so a machine
@@ -71,14 +83,34 @@
   .mono{font-family:var(--mono)}
 
   /* --- header --- */
+  /* min-height, not just padding+content: --header-h below has to match this
+     exactly, or the sticky right column (see .col:last-child) either gaps or
+     overlaps. Widen this if you add more header content and bump --header-h
+     to match. */
+  :root{ --header-h:72px; }
   header{
-    position:sticky; top:0; z-index:20; background:rgba(0,0,0,.92);
+    position:sticky; top:0; z-index:20; min-height:var(--header-h);
+    background:rgba(0,0,0,.92);
     backdrop-filter:blur(10px); border-bottom:1px solid var(--line);
     display:flex; align-items:center; gap:10px; padding:12px 20px; flex-wrap:wrap;
+    box-sizing:border-box;
   }
   .brand{display:flex; align-items:baseline; gap:8px; margin-right:8px}
   .brand b{font-weight:800; letter-spacing:.26em; font-size:14px; color:#fff}
   .brand span{font-weight:500; letter-spacing:.2em; font-size:10px; color:var(--dim)}
+
+  /* Compact header buttons -- unlike .btn (built for panels: block, 100% wide)
+     these size to content, for the record controls that now always live here. */
+  .hbtn{
+    font:700 11px/1 var(--sans); letter-spacing:.1em; text-transform:uppercase;
+    padding:9px 14px; border-radius:7px; cursor:pointer; white-space:nowrap;
+    border:1px solid var(--dimmer); background:#0f131b; color:var(--ink-2);
+    transition:background .12s, border-color .12s, color .12s;
+  }
+  .hbtn:hover:not(:disabled){background:#171c26; border-color:rgba(255,255,255,.22); color:#fff}
+  .hbtn:disabled{opacity:.3; cursor:not-allowed}
+  .hbtn.rec{border-color:rgba(255,59,82,.4); color:#ffb9c2}
+  .hbtn.rec:hover:not(:disabled){background:#2a0d13; border-color:rgba(255,59,82,.65); color:#fff}
 
   .pill{
     font-family:var(--mono); font-size:10.5px; letter-spacing:.04em;
@@ -121,6 +153,19 @@
 
   .col{display:flex; flex-direction:column; gap:20px; min-width:0}
   @media (max-width:1000px){ .col{gap:14px} }
+
+  /* Right column (tiles + charts + console) stays put while the left column
+     of options scrolls past beside it -- that's the whole point of splitting
+     scroll here rather than letting the page carry both columns together.
+     Desktop only: below the 1000px breakpoint the two columns stack into one,
+     so there's nothing to keep in view beside. */
+  @media (min-width:1001px){
+    main > .col:last-child{
+      position:sticky; top:var(--header-h); align-self:start;
+      max-height:calc(100vh - var(--header-h) - 20px);
+      overflow-y:auto;
+    }
+  }
 
   .panel{
     background:linear-gradient(180deg,var(--panel-hi) 0%,var(--panel) 42%,#06080d 100%);
@@ -244,25 +289,11 @@
 
   .hide{display:none !important}
 
-  /* --- attitude + tiles --- */
-  .top{display:grid; grid-template-columns:1.35fr 1fr; gap:20px; align-items:start}
-  @media (max-width:1240px){ .top{grid-template-columns:1fr} }
-
-  .scene{position:relative; height:clamp(340px,44vh,500px); overflow:hidden; padding:0}
-  .scene .overlay{position:absolute; top:14px; left:16px; z-index:2; pointer-events:none}
-  .scene .overlay .lab{font:700 10px/1 var(--sans); letter-spacing:.24em; text-transform:uppercase; color:var(--dim)}
-  .scene .overlay .piv{font-family:var(--mono); font-size:17px; font-weight:700; color:var(--blue-ink); margin-top:7px}
-  .scene .overlay .sub{font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:3px}
-  .scene .foot{position:absolute; bottom:12px; left:16px; z-index:2; pointer-events:none;
-               font-family:var(--mono); font-size:9.5px; color:var(--dimmer); line-height:1.6}
-  .scene canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
-  #cube-error{
-    position:absolute; inset:0; z-index:3; display:none; align-items:center; justify-content:center;
-    padding:24px; text-align:center; font-family:var(--mono); font-size:11px; color:var(--red);
-  }
-  #cube-error.show{display:flex}
-
-  .tiles{display:grid; grid-template-columns:1fr 1fr; gap:12px; align-content:start}
+  /* --- tiles --- */
+  /* Used to share this row with the 3D scene panel (removed); now takes the
+     full width, so 4-across at a reasonable viewport instead of 2x2. */
+  .tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; align-content:start}
+  @media (max-width:900px){ .tiles{grid-template-columns:1fr 1fr} }
   .tile{
     background:linear-gradient(180deg,var(--panel-hi) 0%,var(--panel) 42%,#06080d 100%);
     border:1px solid var(--line); border-radius:10px; padding:12px 13px; min-width:0;
@@ -301,11 +332,17 @@
 <body>
 
 <header>
-  <div class="brand"><b>CUBLI</b><span>BALANCE</span></div>
+  <div class="brand"><b>ARMONIA</b><span>BALANCE</span></div>
   <div id="pill-ws"    class="pill">SERVER</div>
   <div id="pill-link"  class="pill">NO LINK</div>
   <div id="pill-state" class="pill">DISARMED</div>
   <div id="pill-rec"   class="pill hide">REC</div>
+  <!-- Always visible, not tucked in a scrolling panel -- a session spans mode
+       switches (see the header comment above / app.py's csv_thread), so
+       there's no moment where "is it still recording?" should require
+       scrolling to answer. -->
+  <button id="btn-rec-start" class="hbtn rec">● Record</button>
+  <button id="btn-rec-stop"  class="hbtn" disabled>■ Stop</button>
   <div class="spacer"></div>
   <button id="estop" title="Disarm now (spacebar works too)">E-STOP</button>
 </header>
@@ -387,49 +424,60 @@
           <button id="btn-trim-up" class="btn tiny">+</button>
           <button id="btn-trim-set" class="btn tiny wide">Send<span class="key">o</span></button>
         </div>
+        <!-- Sends the SAME hardcoded default the firmware boots with
+             (CubliBalance.ino's kEdgePhiOffsetDefaultDeg, mirrored in
+             schemas.py) -- not a special command, just "o<that number>". -->
+        <button id="btn-trim-default" class="btn" style="margin-top:6px">
+          Reset to default<span id="key-trim-default" class="key">o</span>
+        </button>
+      </div>
+
+      <div class="divider"></div>
+      <div class="section-label">LQR gain scale</div>
+      <p class="note" style="margin-top:0">
+        Multiplies the active mode's own hardcoded gains at the point of use
+        — the tables themselves never change, and a reflash always starts
+        every scale back at 1.00. No live readback exists yet: these show
+        the last value you sent, not a value read from the cube.
+      </p>
+      <div class="ctl">
+        <label>Tilt <span id="p-val" class="mono">1.00</span></label>
+        <input id="p-scale" type="range" min="0" max="3" step="0.05" value="1">
+      </div>
+      <div class="ctl">
+        <label>Rate <span id="r-val" class="mono">1.00</span></label>
+        <input id="r-scale" type="range" min="0" max="3" step="0.05" value="1">
+      </div>
+      <div class="ctl">
+        <label>Wheel <span id="w-val" class="mono">1.00</span></label>
+        <input id="w-scale" type="range" min="0" max="3" step="0.05" value="1">
       </div>
     </div>
 
     <div class="panel">
       <h2>Recording</h2>
-      <div class="row2">
-        <button id="btn-rec-start" class="btn go">Start</button>
-        <button id="btn-rec-stop"  class="btn">Stop</button>
-      </div>
       <div id="rec-status" class="hint">idle</div>
       <p class="note">
-        Writes to <span class="mono">telemetry/plot/</span> at full stream rate
-        with the same header the matplotlib scripts use, so
-        <span class="mono">plot_session_csv.py</span> reads it unchanged. A mode
-        switch rolls to a new file — the two widths never share one.
+        Start/Stop live in the header now — always visible, not tucked away
+        down here. Writes to <span class="mono">telemetry/plot/</span> at
+        full stream rate with the same header the matplotlib scripts use, so
+        <span class="mono">plot_session_csv.py</span> reads it unchanged.
+        <b>One Start…Stop is one session</b> even across a mode switch — it
+        rolls to a new file when the format changes (the two widths can't
+        share one CSV header) but keeps recording the whole time, and only
+        Stop ends it.
       </p>
     </div>
   </div>
 
-  <!-- RIGHT: attitude, tiles, charts, console -->
+  <!-- RIGHT: tiles, charts, console -->
   <div class="col">
 
-    <div class="top">
-      <div class="panel scene">
-        <div class="overlay">
-          <div class="lab">Attitude</div>
-          <div id="pivot-label" class="piv">—</div>
-          <div id="pivot-sub" class="sub">awaiting resolve</div>
-        </div>
-        <div class="foot">
-          rotation = axis-angle from φ<br>
-          (tilt error vs equilibrium, not Euler)
-        </div>
-        <canvas id="cube"></canvas>
-        <div id="cube-error"></div>
-      </div>
-
-      <div class="tiles">
-        <div class="tile"><b id="lbl-a">φ x / y / z</b><div id="m-a" class="val">—</div></div>
-        <div class="tile"><b id="lbl-b">ω x / y / z</b><div id="m-b" class="val">—</div></div>
-        <div class="tile"><b id="lbl-c">Wheels — RPM</b><div id="m-c" class="val">—</div></div>
-        <div class="tile"><b id="lbl-d">τ — N·m</b><div id="m-d" class="val">—</div></div>
-      </div>
+    <div class="tiles">
+      <div class="tile"><b id="lbl-a">φ x / y / z</b><div id="m-a" class="val">—</div></div>
+      <div class="tile"><b id="lbl-b">ω x / y / z</b><div id="m-b" class="val">—</div></div>
+      <div class="tile"><b id="lbl-c">Wheels — RPM</b><div id="m-c" class="val">—</div></div>
+      <div class="tile"><b id="lbl-d">τ — N·m</b><div id="m-d" class="val">—</div></div>
     </div>
 
     <div id="charts"></div>

@@ -106,7 +106,16 @@ class Hub:
 
         # recording
         self.rec_path = None
-        self.rec_rows = 0
+        self.rec_rows = 0            # rows in the CURRENT file only
+        # A recording SESSION (one Start...Stop bracket) can span a mode
+        # switch, which rolls to a new file because the two formats have
+        # different widths and can never share one CSV header -- rec_path
+        # itself already survives that roll (see csv_thread), but rec_rows
+        # resets to 0 at each new file, which used to read as "it stopped"
+        # even though the session never did. These two track the WHOLE
+        # session across every file it touches.
+        self.rec_session_rows = 0
+        self.rec_files = []
 
         self.state = {
             "schema": None,          # 'corner' | 'edge' | None until first packet
@@ -391,10 +400,21 @@ def csv_thread(hub):
             active_schema = schema
             hub.rec_path = path
             hub.rec_rows = 0
-            hub.push_console(f"# [dashboard] recording -> {path.name}", "info")
+            hub.rec_files.append(path.name)
+            # First file of a fresh Start vs. a mode-switch roll mid-session --
+            # said explicitly so watching the console makes it obvious this is
+            # the SAME bracketed recording continuing, not a new one starting.
+            if len(hub.rec_files) == 1:
+                hub.push_console(f"# [dashboard] recording -> {path.name}", "info")
+            else:
+                hub.push_console(
+                    f"# [dashboard] recording continues (mode switch) -> "
+                    f"{path.name} -- session so far: {hub.rec_session_rows} rows "
+                    f"across {len(hub.rec_files)} file(s)", "info")
 
         writer.writerow(vals)
         hub.rec_rows += 1
+        hub.rec_session_rows += 1
 
         if time.monotonic() - last_flush > CSV_FLUSH_S:
             handle.flush()
@@ -460,7 +480,9 @@ def build_status(hub):
         "link_age_s": round(age, 3) if age is not None else None,
         "stale": age is None or age > STALE_AFTER_S,
         "recording": hub.rec_path.name if hub.rec_path else None,
-        "recorded_rows": hub.rec_rows,
+        "recorded_rows": hub.rec_rows,          # current file only
+        "recorded_rows_session": hub.rec_session_rows,   # whole Start...Stop bracket
+        "recorded_files": len(hub.rec_files),   # >1 means a mode switch rolled files
         "read_only": hub.read_only,
     }
 
@@ -641,17 +663,33 @@ async def handle_client_message(hub, msg):
             hub.push_console(f"> {cmd}", "tx")
 
     elif kind == "record":
+        # One Start...Stop bracket is ONE session, no matter how many times the
+        # mode is switched in between. A mode switch changes the telemetry
+        # width (10 vs 26 columns), so it still rolls to a new file under the
+        # hood -- two shapes cannot share one CSV header without breaking
+        # every consumer that reads it (plot_session_csv.py, the matplotlib
+        # scripts) by column count. What does NOT happen any more is the
+        # session looking like it stopped: rec_path already survived a
+        # mid-session roll before this change (see csv_thread); rec_session_rows
+        # and rec_files now make that survival visible instead of just true.
         action = msg.get("action")
         if action == "start" and hub.rec_path is None:
             hub.rec_path = _PENDING     # csv_thread opens the real file
             hub.rec_rows = 0
+            hub.rec_session_rows = 0
+            hub.rec_files = []
         elif action == "stop" and hub.rec_path is not None:
-            path, rows = hub.rec_path, hub.rec_rows
+            rows, files = hub.rec_session_rows, list(hub.rec_files)
             hub.csv_q.put(_STOP_RECORDING)
             hub.rec_path = None
-            name = getattr(path, "name", "(no data)")
-            hub.push_console(
-                f"# [dashboard] recording stopped: {name} ({rows} rows)", "info")
+            if len(files) <= 1:
+                name = files[0] if files else "(no data)"
+                hub.push_console(
+                    f"# [dashboard] recording stopped: {name} ({rows} rows)", "info")
+            else:
+                hub.push_console(
+                    f"# [dashboard] recording stopped: {rows} rows across "
+                    f"{len(files)} files ({', '.join(files)})", "info")
 
     elif kind == "mode":
         # PARSE-SCHEMA OVERRIDE, not a command to the cube. Only the classic UI
