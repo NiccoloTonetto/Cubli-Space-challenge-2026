@@ -80,11 +80,12 @@
 // a known-good number.
 //
 // ---------------------------- WHAT AND WHY ---------------------------------
-// kPhiOffset below (0.2624, 0.2265, -0.4830 deg) is NOT a guess or a
+// kPhiOffset below (0.2702, 0.0970, -0.3647 deg) is NOT a guess or a
 // snapshot -- it's the mean of Automatic Trim's own converged gTrim over
-// a 132.41 s continuous armed hold (perfect_equilibrium_2.log, 2026-08-20),
-// with per-axis std < 0.0012 deg over that whole window. That's the
-// signature of a genuine fixed point, not a value still drifting: whatever
+// the last ~55 s of a 278 s continuous armed hold (FINAL_CALIBRATION.log,
+// 2026-08-21, corner [-1,-1,-1]), with per-axis std < 0.0006 deg over that
+// tail and standing wheel speed down to ~0.3-0.5 rad/s on all three axes.
+// That's the signature of a genuine fixed point, not a value still drifting: whatever
 // residual COM/mounting error automatic trim was correcting for, it found
 // it and stopped moving. Once a corner's offset is known this precisely,
 // there's no more reason to re-derive it live every session -- hardcode
@@ -127,7 +128,7 @@
 //       rest, with no trim column doing any work -- that's the point of
 //       hardcoding a validated offset instead of waiting for adaptation.
 //   [ ] If phi at rest looks meaningfully different from what
-//       perfect_equilibrium_2.log showed, something about the corner's
+//       FINAL_CALIBRATION.log showed, something about the corner's
 //       mounting has changed -- see the WHAT AND WHY note above, this
 //       file's offset needs re-deriving, not trusting blindly.
 //
@@ -521,15 +522,16 @@ void resolveCornerCandidate(Print& out) {
 float phi[3] = { 0.0f, 0.0f, 0.0f };
 
 // FIXED OFFSET -- see the header's WHAT AND WHY note for provenance
-// (perfect_equilibrium_2.log, mean over 132.41s, std<0.0012 deg/axis).
+// (FINAL_CALIBRATION.log, corner [-1,-1,-1], mean over the last ~55s of a
+// 278s hold, std<0.0006 deg/axis).
 // ADDED to the raw measurement below, same sign/convention Stage4_AutoTrim
 // .ino's gTrim used (verified on the bench, cos(trim,wheels)=-1.0000 --
 // see that file's header) -- this is that same verified value, just no
 // longer recomputed live.
 static const float kPhiOffset[3] = {
-  0.004580f,   // rad =  0.2624 deg
-  0.003952f,   // rad =  0.2265 deg
-  -0.008430f,  // rad = -0.4830 deg
+  0.004716f,   // rad =  0.2702 deg
+  0.001693f,   // rad =  0.0970 deg
+  -0.006365f,  // rad = -0.3647 deg
 };
 
 void updateCornerProjection() {
@@ -899,7 +901,7 @@ void setup() {
   gBoot.print("# Fixed offset (not adapting): "); gBoot.print(kPhiOffset[0]*(float)RAD_TO_DEG, 4);
   gBoot.print(", "); gBoot.print(kPhiOffset[1]*(float)RAD_TO_DEG, 4);
   gBoot.print(", "); gBoot.print(kPhiOffset[2]*(float)RAD_TO_DEG, 4);
-  gBoot.println(" deg (from perfect_equilibrium_2.log).");
+  gBoot.println(" deg (from FINAL_CALIBRATION.log).");
   gBoot.println("# Velocity cap is loosened this stage (kMaxOmega ~2000 RPM, not");
   gBoot.println("# the 40 rad/s policy value) -- a0 (disarm) is the real safety net,");
   gBoot.println("# along with kMaxTilt (25 deg auto-trip) since the arm gate is gone.");
@@ -993,7 +995,7 @@ void loop() {
 // AutoTrim WiFi builds needed. Retune in the USB sketch, then re-copy.
 //
 // This file exists because Automatic Trim already did its job and found a
-// stable, precise answer (perfect_equilibrium_2.log) -- it is a
+// stable, precise answer (FINAL_CALIBRATION.log) -- it is a
 // consequence of trust in that mechanism, not a replacement for it.
 // Stage4_AutoTrim.ino remains the way to (re-)derive kPhiOffset if the
 // corner's mounting ever changes; this file is for running with an

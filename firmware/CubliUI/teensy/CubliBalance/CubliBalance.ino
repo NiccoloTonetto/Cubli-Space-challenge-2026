@@ -605,13 +605,14 @@ void resolveCornerCandidate(Print& out) {
 
 float gPhi[3] = { 0.0f, 0.0f, 0.0f };
 
-// FIXED OFFSET -- from perfect_equilibrium_2.log, mean over a 132.41 s
-// continuous armed hold (2026-08-20), per-axis std < 0.0012 deg. That is the
-// signature of a genuine fixed point, not a value still drifting: whatever
-// residual COM/mounting error automatic trim was correcting for, it found it
-// and stopped moving. ADDED to the raw measurement below, same sign/convention
-// Stage4_AutoTrim.ino's live gTrim used (verified on the bench,
-// cos(trim,wheels) = -1.0000).
+// FIXED OFFSET -- from FINAL_CALIBRATION.log, corner [-1,-1,-1], mean over
+// the last ~55 s of a 278 s continuous armed hold (2026-08-21), per-axis
+// std < 0.0006 deg over that tail and standing wheel speed down to
+// ~0.3-0.5 rad/s on all three axes. That is the signature of a genuine fixed
+// point, not a value still drifting: whatever residual COM/mounting error
+// automatic trim was correcting for, it found it and stopped moving. ADDED
+// to the raw measurement below, same sign/convention Stage4_AutoTrim.ino's
+// live gTrim used (verified on the bench, cos(trim,wheels) = -1.0000).
 //
 // If the cube's mounting changes (battery moved, a cable re-routed, a bolt
 // re-torqued) this number goes stale -- that is the tradeoff for dropping live
@@ -619,9 +620,9 @@ float gPhi[3] = { 0.0f, 0.0f, 0.0f };
 // the new result rather than assuming this one still holds. This file has no
 // way to detect that its offset has gone stale on its own.
 static const float kCornerPhiOffset[3] = {
-  0.004580f,   // rad =  0.2624 deg
-  0.003952f,   // rad =  0.2265 deg
-  -0.008430f,  // rad = -0.4830 deg
+  0.004716f,   // rad =  0.2702 deg
+  0.001693f,   // rad =  0.0970 deg
+  -0.006365f,  // rad = -0.3647 deg
 };
 
 void updateCornerProjection() {
@@ -1380,7 +1381,7 @@ void setup() {
   gBoot.print(kCornerPhiOffset[0]*(float)RAD_TO_DEG, 4);
   gBoot.print(", "); gBoot.print(kCornerPhiOffset[1]*(float)RAD_TO_DEG, 4);
   gBoot.print(", "); gBoot.print(kCornerPhiOffset[2]*(float)RAD_TO_DEG, 4);
-  gBoot.println(" deg (from perfect_equilibrium_2.log).");
+  gBoot.println(" deg (from FINAL_CALIBRATION.log).");
   gBoot.print(  "# EDGE HAS A GATE at ");
   gBoot.print(kEdgeArmGate * (float)RAD_TO_DEG, 2);
   gBoot.println(" deg -- KNOWN SUSPECT, see SECTION 5.");
