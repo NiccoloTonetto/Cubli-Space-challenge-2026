@@ -98,9 +98,17 @@ static bool gHalted = false;
 // ----------------------------------------------------------------------------
 
 static const float kG0 = 9.80665f;
-static const float kGyroBias[3]    = { +0.002348f, -0.001140f, -0.000762f };
-static const float kAccelOffset[3] = { -0.092282f, -0.196510f, +0.050664f };
-static const float kAccelScale[3]  = {  0.991085f,  0.991035f,  1.003787f };
+// IMU calibration, THIS rig / THIS mount. Kept byte-identical across every
+// stage in this folder (2026-08-21) -- these had drifted apart, with stages 3-5
+// carrying a different set from stages 1-2.
+// NOTE: kAccelScale's third entry (0.568) is a 43% correction. That is not what
+// a healthy accelerometer calibration looks like, and it distorts ghat -- and
+// therefore corner resolution and phi -- whenever gravity is not aligned with a
+// single IMU axis. Re-run IMU_Calibration.ino for this mount before trusting
+// phi numerically.
+static const float kGyroBias[3]    = { -0.001956f, -0.009486f, -0.001770f };
+static const float kAccelOffset[3] = { +0.008400f, -0.090030f, +0.001695f };  // m/s^2
+static const float kAccelScale[3]  = { +0.819659f, +0.706744f, +0.568125f };
 
 // Mount rotation, sensor -> body. The IMU has been MOVED ONTO THE CUBE'S
 // BALANCING AXIS: its z axis now points along the body diagonal it balances
@@ -305,58 +313,97 @@ struct CornerCandidate {
   float placeOffsetDeg;
 };
 
+// >>> UPDATED 2026-08-21 -- NEW COM (IMU moved onto the balancing axis). <<<
+// What in this table is new, and what is NOT:
+//   gB[3]          -- ALL EIGHT replaced with the newly measured corner
+//                     directions for the new COM. Trustworthy.
+//   Kp[3][9]       -- derived from ONE supplied reference 3x9 (the same-sign
+//                     corner) by the exact sign rule Kp[i][blk*3+j] *= s_i*s_j.
+//                     For [-1,-1,-1] and [+1,+1,+1] that factor is +1 for every
+//                     pair, so those two carry the reference matrix VERBATIM.
+//                     For the six MIXED corners the SIGNS are exact but the
+//                     MAGNITUDES are inherited from the same-sign corner rather
+//                     than derived for that corner's own lean/ell -- usable, not
+//                     final. Replace per corner as real gains are computed.
+//                     (Rule verified against the previous table: 144/144 sign
+//                     agreement across the phi and om blocks; it mispredicts a
+//                     few ~1e-3 rho diagonal terms, which are three orders of
+//                     magnitude below the phi gains.)
+//   placeOffsetDeg -- recomputed from the new gB (angle to the body diagonal).
+//   ellM, and the per-corner prose comments below (ell / Sg / lambda /
+//                     theta_eq / recovery margins) -- STALE, still the OLD
+//                     plant. Do not trust those numbers until re-derived.
 static const CornerCandidate kCorners[8] = {
   { "[-1,-1,-1]"  // lean 0.797 deg vs body diagonal, ell 122.84 mm, Sg 1.8875, lambda 8.2572
-    , { -0.571549475f, -0.588645577f, -0.571688354f }
-    , { { -6.9157443f, 3.39226651f, 3.42117763f, -0.834802926f, 0.420730621f, 0.42704013f, -0.000700236589f, 0.00623514736f, 0.00621826435f },  // wheel X
-        { 3.51941299f, -6.8296299f, 3.51364994f, 0.412131369f, -0.848057508f, 0.411711216f, 0.00382628222f, -0.00316504063f, 0.00381609239f },  // wheel Y
-        { 3.42913675f, 3.39467001f, -6.92366505f, 0.426502436f, 0.419758797f, -0.837698817f, 0.00606757682f, 0.00607034843f, -0.000870343472f } } // wheel Z
-    , 0.797f },
+    , { -0.583713f, -0.584069f, -0.564042f }
+    , { { -4.835f, 2.4877f, 2.4276f, -0.6198f, 0.3174f, 0.3096f, -0.0009f, 0.0021f, 0.0021f },  // wheel X
+        { 2.4904f, -4.8347f, 2.4291f, 0.3174f, -0.6202f, 0.3095f, 0.0021f, -0.0009f, 0.0021f },  // wheel Y
+        { 2.4045f, 2.4033f, -4.977f, 0.31f, 0.3098f, -0.6346f, 0.0023f, 0.0023f, -0.0008f } } // wheel Z
+    , 0.928724393f },
   { "[-1,-1,+1]"  // lean 3.170 deg vs body diagonal, ell 128.54 mm, Sg 1.9750, lambda 8.1212
-    , { -0.546220303f, -0.562558711f, 0.620621562f }
-    , { { -7.58488846f, 3.33574939f, -3.65192771f, -0.921932399f, 0.430031687f, -0.480414748f, 0.000473975349f, 0.00748626003f, -0.00814931281f },  // wheel X
-        { 3.43748641f, -7.47500134f, -3.7502768f, 0.421860248f, -0.928083122f, -0.467502952f, 0.00511831883f, -0.00179392833f, -0.00555475708f },  // wheel Y
-        { -3.84645557f, -3.83494377f, -6.8614974f, -0.464526713f, -0.460435808f, -0.881195128f, -0.00357620185f, -0.00353527209f, -0.00314604398f } } // wheel Z
-    , 3.170f },
+    , { -0.537196f, -0.537524f, 0.649991f }
+    , { { -4.835f, 2.4877f, -2.4276f, -0.6198f, 0.3174f, -0.3096f, -0.0009f, 0.0021f, -0.0021f },  // wheel X
+        { 2.4904f, -4.8347f, -2.4291f, 0.3174f, -0.6202f, -0.3095f, 0.0021f, -0.0009f, -0.0021f },  // wheel Y
+        { -2.4045f, -2.4033f, -4.977f, -0.31f, -0.3098f, -0.6346f, -0.0023f, -0.0023f, -0.0008f } } // wheel Z
+    , 5.27655426f },
   { "[-1,+1,-1]"  // lean 2.773 deg vs body diagonal, ell 126.08 mm, Sg 1.9373, lambda 8.1591
-    , { -0.556852818f, 0.616181135f, -0.55698812f }
-    , { { -7.26747227f, -3.47609496f, 3.4201951f, -0.874630272f, -0.451983064f, 0.442295492f, 0.000827456824f, -0.00813719723f, 0.00776857371f },  // wheel X
-        { -3.79863954f, -6.87362671f, -3.8063941f, -0.426038593f, -0.899968863f, -0.426554501f, -0.000622705789f, -0.00668813102f, -0.000633999531f },  // wheel Y
-        { 3.41229653f, -3.47500682f, -7.25577497f, 0.442907125f, -0.45318532f, -0.871017814f, 0.00794851314f, -0.0083494084f, 0.00103329937f } } // wheel Z
-    , 2.773f },
+    , { -0.549159f, 0.645625f, -0.530653f }
+    , { { -4.835f, -2.4877f, 2.4276f, -0.6198f, -0.3174f, 0.3096f, -0.0009f, -0.0021f, 0.0021f },  // wheel X
+        { -2.4904f, -4.8347f, -2.4291f, -0.3174f, -0.6202f, -0.3095f, -0.0021f, -0.0009f, -0.0021f },  // wheel Y
+        { 2.4045f, -2.4033f, -4.977f, 0.31f, -0.3098f, -0.6346f, 0.0023f, -0.0023f, -0.0008f } } // wheel Z
+    , 5.00861047f },
   { "[-1,+1,+1]"  // lean 3.097 deg vs body diagonal, ell 131.64 mm, Sg 2.0226, lambda 8.0480
-    , { -0.533349514f, 0.590173781f, 0.605997622f }
-    , { { -8.23398495f, -3.56334782f, -3.77657819f, -1.06839609f, -0.416523129f, -0.442939252f, -0.00582132814f, -0.00140620384f, -0.00158187468f },  // wheel X
-        { -3.41282964f, -7.33259392f, 4.13743114f, -0.429089457f, -0.917372108f, 0.514714897f, -0.00497917458f, -0.00120868487f, 0.00603242731f },  // wheel Y
-        { -3.50851822f, 4.01196194f, -6.99511194f, -0.465059072f, 0.524895251f, -0.847355127f, -0.00789372995f, 0.00895721f, 0.00243827817f } } // wheel Z
-    , 3.097f },
+    , { -0.509899f, 0.599468f, 0.616962f }
+    , { { -4.835f, -2.4877f, -2.4276f, -0.6198f, -0.3174f, -0.3096f, -0.0009f, -0.0021f, -0.0021f },  // wheel X
+        { -2.4904f, -4.8347f, 2.4291f, -0.3174f, -0.6202f, 0.3095f, -0.0021f, -0.0009f, 0.0021f },  // wheel Y
+        { -2.4045f, 2.4033f, -4.977f, -0.31f, 0.3098f, -0.6346f, -0.0023f, 0.0023f, -0.0008f } } // wheel Z
+    , 4.65881833f },
   { "[+1,-1,-1]"  // lean 3.171 deg vs body diagonal, ell 128.56 mm, Sg 1.9753, lambda 8.1180
-    , { 0.620658159f, -0.562471628f, -0.546268404f }
-    , { { -6.85864925f, -3.8295908f, -3.8494637f, -0.880151272f, -0.460793495f, -0.465634525f, -0.00304374471f, -0.00361368596f, -0.00366454106f },  // wheel X
-        { -3.75562048f, -7.4855423f, 3.44052219f, -0.467026591f, -0.931139171f, 0.421110034f, -0.00539576123f, -0.00195194408f, 0.0049761422f },  // wheel Y
-        { -3.65655398f, 3.33088136f, -7.58417654f, -0.481462985f, 0.429957539f, -0.921488523f, -0.00823030341f, 0.00754544372f, 0.000543692615f } } // wheel Z
-    , 3.171f },
+    , { 0.645701f, -0.549274f, -0.530441f }
+    , { { -4.835f, -2.4877f, -2.4276f, -0.6198f, -0.3174f, -0.3096f, -0.0009f, -0.0021f, -0.0021f },  // wheel X
+        { -2.4904f, -4.8347f, 2.4291f, -0.3174f, -0.6202f, 0.3095f, -0.0021f, -0.0009f, 0.0021f },  // wheel Y
+        { -2.4045f, 2.4033f, -4.977f, -0.31f, 0.3098f, -0.6346f, -0.0023f, 0.0023f, -0.0008f } } // wheel Z
+    , 5.01640064f },
   { "[+1,-1,+1]"  // lean 2.609 deg vs body diagonal, ell 134.01 mm, Sg 2.0591, lambda 7.9804
-    , { 0.595400333f, -0.539581716f, 0.595273018f }
-    , { { -7.30901575f, -3.4263885f, 4.20474958f, -0.895961821f, -0.451509207f, 0.553766072f, 0.00180089788f, -0.00741348462f, 0.00873730052f },  // wheel X
-        { -3.81644511f, -8.42617893f, -3.82059836f, -0.41949293f, -1.11799276f, -0.419535488f, 0.00164802792f, -0.00882489327f, 0.00163950643f },  // wheel Y
-        { 4.19695139f, -3.42353535f, -7.30109262f, 0.554382324f, -0.452106625f, -0.892860353f, 0.00891439989f, -0.00758054852f, 0.00199437374f } } // wheel Z
-    , 2.609f },
+    , { 0.599572f, -0.510034f, 0.616749f }
+    , { { -4.835f, -2.4877f, 2.4276f, -0.6198f, -0.3174f, 0.3096f, -0.0009f, -0.0021f, 0.0021f },  // wheel X
+        { -2.4904f, -4.8347f, -2.4291f, -0.3174f, -0.6202f, -0.3095f, -0.0021f, -0.0009f, -0.0021f },  // wheel Y
+        { 2.4045f, -2.4033f, -4.977f, 0.31f, -0.3098f, -0.6346f, 0.0023f, -0.0023f, -0.0008f } } // wheel Z
+    , 4.64807997f },
   { "[+1,+1,-1]"  // lean 3.095 deg vs body diagonal, ell 131.66 mm, Sg 2.0229, lambda 8.0501
-    , { 0.606037736f, 0.590086639f, -0.533400357f }
-    , { { -6.99898767f, 4.01700401f, -3.50819087f, -0.848652959f, 0.524742544f, -0.464503765f, 0.00232795905f, 0.00885933265f, -0.00779828522f },  // wheel X
-        { 4.13386154f, -7.32801533f, -3.40998602f, 0.515303075f, -0.915354431f, -0.429458082f, 0.00615369575f, -0.00108131079f, -0.00508674001f },  // wheel Y
-        { -3.77546f, -3.56726503f, -8.23596478f, -0.442555219f, -0.416409701f, -1.06887817f, -0.00154884392f, -0.00138305803f, -0.00584927434f } } // wheel Z
-    , 3.095f },
+    , { 0.611553f, 0.611236f, -0.502388f }
+    , { { -4.835f, 2.4877f, -2.4276f, -0.6198f, 0.3174f, -0.3096f, -0.0009f, 0.0021f, -0.0021f },  // wheel X
+        { 2.4904f, -4.8347f, -2.4291f, 0.3174f, -0.6202f, -0.3095f, 0.0021f, -0.0009f, -0.0021f },  // wheel Y
+        { -2.4045f, -2.4033f, -4.977f, -0.31f, -0.3098f, -0.6346f, -0.0023f, -0.0023f, -0.0008f } } // wheel Z
+    , 5.10629368f },
   { "[+1,+1,+1]"  // lean 0.714 deg vs body diagonal, ell 136.99 mm, Sg 2.1048, lambda 7.9341
-    , { 0.582457066f, 0.567126632f, 0.582332492f }
-    , { { -7.76383209f, 3.81748652f, 4.04768848f, -0.975789487f, 0.490672857f, 0.522951066f, -0.000524852891f, 0.00608501304f, 0.00639130361f },  // wheel X
-        { 3.93991017f, -8.08397388f, 3.93213129f, 0.481777757f, -1.03972197f, 0.481087863f, 0.00368249253f, -0.00348382187f, 0.00367164146f },  // wheel Y
-        { 4.05641413f, 3.81822968f, -7.77580976f, 0.522317231f, 0.489363909f, -0.97946316f, 0.00622009346f, 0.00590694463f, -0.000720091164f } } // wheel Z
-    , 0.714f },
+    , { 0.571935f, 0.571638f, 0.58832f }
+    , { { -4.835f, 2.4877f, 2.4276f, -0.6198f, 0.3174f, 0.3096f, -0.0009f, 0.0021f, 0.0021f },  // wheel X
+        { 2.4904f, -4.8347f, 2.4291f, 0.3174f, -0.6202f, 0.3095f, 0.0021f, -0.0009f, 0.0021f },  // wheel Y
+        { 2.4045f, 2.4033f, -4.977f, 0.31f, 0.3098f, -0.6346f, 0.0023f, 0.0023f, -0.0008f } } // wheel Z
+    , 0.77358409f },
 };
 
 int gCornerIdx = 0;
+
+// ---------------------- ACTIVE EQUILIBRIUM (gB) -----------------------------
+// gB is the body-frame gravity direction at balance -- i.e. THE equilibrium.
+// kCorners[].gB holds the CAD/table value; gActiveGB is what the controller
+// actually uses, so a MEASURED equilibrium can replace the tabulated one.
+//
+// Why: a trim/offset can only nudge phi and is clamped, so once it saturates,
+// re-seeding it is a fixed point that changes nothing. Capturing gB itself has
+// no such bound and sets phi to exactly zero at the current pose.
+static float gActiveGB[3] = { 0.0f, 0.0f, 1.0f };
+static bool  gGBFromBench = false;
+
+static void setActiveGBFromTable() {
+  const float* t = kCorners[gCornerIdx].gB;
+  gActiveGB[0] = t[0]; gActiveGB[1] = t[1]; gActiveGB[2] = t[2];
+  normalize3(gActiveGB);
+  gGBFromBench = false;
+}
+
 
 void resolveCornerCandidate() {
   int bestIdx = 0, secondIdx = 0;
@@ -367,6 +414,7 @@ void resolveCornerCandidate() {
     else if (d > secondDot) { secondDot = d; secondIdx = i; }
   }
   gCornerIdx = bestIdx;
+  setActiveGBFromTable();
   Serial.print("# corner resolved: "); Serial.print(kCorners[gCornerIdx].name);
   Serial.print("  place_offset="); Serial.print(kCorners[gCornerIdx].placeOffsetDeg, 3);
   Serial.print(" deg  (best_dot="); Serial.print(bestDot, 4);
@@ -386,9 +434,59 @@ float phi[3] = { 0.0f, 0.0f, 0.0f };
 // bringup's kPhiOffset used.
 static float gPhiOffset[3] = { 0.0f, 0.0f, 0.0f };
 
+// Guards for the live phi offset: project onto the plane perpendicular to gB,
+// then clamp. phi = -(gB x ghat) satisfies phi . gB == 0 identically, so an
+// offset with a gB component would push the sum off that plane and inject a
+// tilt the estimator can never produce or correct. The clamp stops a
+// fat-fingered value from moving the tilt trip far enough to defeat it.
+static const float kOffsetMax = 0.261799388f;   // rad, 15 deg
+void applyOffsetGuards() {
+  const float* gB = gActiveGB;
+  const float n2 = dot3(gB, gB);
+  if (n2 > 1e-12f) {
+    const float along = dot3(gPhiOffset, gB) / n2;
+    gPhiOffset[0] -= along * gB[0];
+    gPhiOffset[1] -= along * gB[1];
+    gPhiOffset[2] -= along * gB[2];
+  }
+  for (int i = 0; i < 3; ++i) {
+    if (!isfinite(gPhiOffset[i])) { gPhiOffset[i] = 0.0f; }
+  }
+  const float n = norm3(gPhiOffset);
+  if (n > kOffsetMax) {
+    const float s = kOffsetMax / n;
+    gPhiOffset[0] *= s; gPhiOffset[1] *= s; gPhiOffset[2] *= s;
+  }
+}
+
+// gB := ghat, so phi = -(gB x ghat) = 0 exactly at this pose.
+static void captureEquilibrium() {
+  const float* tab = kCorners[gCornerIdx].gB;
+  const float old[3] = { gActiveGB[0], gActiveGB[1], gActiveGB[2] };
+
+  gActiveGB[0] = ghat[0]; gActiveGB[1] = ghat[1]; gActiveGB[2] = ghat[2];
+  normalize3(gActiveGB);
+  gGBFromBench = true;
+  gPhiOffset[0] = gPhiOffset[1] = gPhiOffset[2] = 0.0f;   // stale against the new gB
+
+  const float dM = dot3(old, gActiveGB), dT = dot3(tab, gActiveGB);
+  Serial.print("# EQUILIBRIUM CAPTURED: gB = ");
+  Serial.print(gActiveGB[0], 6); Serial.print(", ");
+  Serial.print(gActiveGB[1], 6); Serial.print(", ");
+  Serial.println(gActiveGB[2], 6);
+  Serial.print("#   moved ");
+  Serial.print(acosf(dM > 1.0f ? 1.0f : (dM < -1.0f ? -1.0f : dM)) * (float)RAD_TO_DEG, 3);
+  Serial.print(" deg from the previous equilibrium, ");
+  Serial.print(acosf(dT > 1.0f ? 1.0f : (dT < -1.0f ? -1.0f : dT)) * (float)RAD_TO_DEG, 3);
+  Serial.println(" deg from the CAD table value.");
+  Serial.println("#   phi now reads ~0 here. Kp is still the TABLE's gains for the");
+  Serial.println("#   TABLE's geometry -- a large move means they no longer match");
+  Serial.println("#   the cube. Send c to restore the table value.");
+}
+
 void updateCornerProjection() {
   float t[3];
-  cross3(kCorners[gCornerIdx].gB, ghat, t);
+  cross3(gActiveGB, ghat, t);
   phi[0] = -t[0] - gPhiOffset[0];
   phi[1] = -t[1] - gPhiOffset[1];
   phi[2] = -t[2] - gPhiOffset[2];
@@ -398,6 +496,14 @@ void updateCornerProjection() {
 // ----------------------------------------------------------------------------
 // SECTION 2d: TELEMETRY
 // ----------------------------------------------------------------------------
+
+static void printPhiOffset(const char* prefix) {
+  Serial.print(prefix);
+  Serial.print(gPhiOffset[0] * (float)RAD_TO_DEG, 4); Serial.print(", ");
+  Serial.print(gPhiOffset[1] * (float)RAD_TO_DEG, 4); Serial.print(", ");
+  Serial.print(gPhiOffset[2] * (float)RAD_TO_DEG, 4);
+  Serial.println(" deg");
+}
 
 void printState(uint32_t t_ms, const float rho[3], const float rhoLp[3],
                 const float tau[3], const float tauCmd[3], bool armed,
@@ -469,18 +575,33 @@ static const float kArmGate = 0.00872664619f;   // rad, 0.5 deg -- kept at the
                                                   // is the fix for a COM
                                                   // offset, not a wider gate.
 
-// Re-verified on THIS rig via Stage 1's own pulse checklist (2026-08-21),
-// NOT carried forward from edge-bringup (which had all three +1.0f). All
-// three entries are -1.0f here, matching Stage 1 as flashed: a positive
-// commanded torque drove rho negative on every wheel. (Stage 1's older prose
-// claimed only Y was inverted -- that note disagreed with its own array; the
-// array is what ran on the bench, and it is what is carried here.)
+// >>> WHEEL SIGN: ALL THREE +1.0f. Do not change without redoing the
+// >>> eigenvalue check described below. <<<
+//
+// Established 2026-08-21 by closed-loop analysis, after all -1.0f and then
+// (+1,-1,-1) both produced a runaway at Stage 2 on the bench.
+//
+// The loop is  w_dot ~ diag(s) * Kp_om * w  (the firmware commands wheel i
+// with s_i * u_i, and the body feels the reaction). Sweeping all eight sign
+// combinations against this corner table gives exactly ONE stable answer:
+//   s = (+1,+1,+1)  ->  max Re = -0.0002   STABLE
+//   s = (+1,-1,-1)  ->  max Re = +0.9371   runaway, ~1 s time constant
+//   s = (-1,-1,-1)  ->  max Re = +0.9374   runaway
+// Every mixed combination is unstable too: Kp is a COUPLED 3x3, so negating
+// one wheel's actuation is not a local change -- it breaks the whole design.
+//
+// WHY STAGE 1'S PULSE CHECK CANNOT SETTLE THIS: it commands s*tau and reports
+// rho = s*v ~ k*s*s*tau = k*tau. s*s is +1 for BOTH signs, so "rho goes
+// positive for a positive pulse" passes no matter what is in this array. That
+// checklist item is blind here; the only Stage 1 check that discriminates is
+// the physical one -- does the cube push toward DECREASING |phi|.
+//
 // Fix wiring-convention sign problems HERE, NEVER by flipping a sign inside
-// Kp -- Kp comes verbatim from cubli_gains.h (Firmware Lessons S4).
+// Kp -- Kp comes verbatim from the corner table.
 static const float kAxisWheelSign[3] = {
-  -1.0f,   // X -- CONFIRMED (this rig, id 1)
-  -1.0f,   // Y -- CONFIRMED (this rig, id 3)
-  -1.0f,   // Z -- CONFIRMED (this rig, id 2)
+  +1.0f,   // X (this rig, moteus id 1)
+  +1.0f,   // Y (this rig, moteus id 3)
+  +1.0f,   // Z (this rig, moteus id 2)
 };
 
 static Moteus::PositionMode::Format kTorqueFormat = []() {
@@ -502,12 +623,54 @@ Moteus& wheelObj(int i) {
   return i == 0 ? moteusX : (i == 1 ? moteusY : moteusZ);
 }
 
+// ---------------------------- YAW PROJECTION --------------------------------
+// Rotation about gB (the balancing axis) is the corner controller's null mode:
+// the reduced-attitude estimator cannot OBSERVE it -- phi = -(gB x ghat) is
+// perpendicular to gB by construction, so the phi block already spans only two
+// dimensions and the state is effectively 8, not 9 -- and reaction wheels
+// cannot hold sustained torque about it anyway.
+//
+// The om block is supposed to inherit that null. At the corner the reference
+// gains were derived for it very nearly does; at the six MIXED corners it does
+// NOT, because the Kp magnitudes are inherited from a same-sign corner (see the
+// table header). Measured null-vs-gB misalignment, and the residual yaw torque
+// it leaves as a fraction of a full Kp row:
+//   [-1,-1,-1] 0.3 deg off,  0.7%      <- a derived corner, fine
+//   [+1,+1,+1] 1.4 deg off,  3.0%      <- a derived corner, fine
+//   the six MIXED corners: 4.5-5.9 deg off, 9.6-12.6%
+// That residual PUSHES on yaw instead of ignoring it.
+//
+// Both phi and om are projected onto the plane perpendicular to gB before Kp.
+// For a raw phi that is a no-op (it is already perpendicular); what it removes
+// is any gB component carried by the OFFSET/TRIM added to phi, which would
+// otherwise inject a tilt the estimator can never produce or correct.
+// Toggle with "y0"/"y1" to A/B it on the bench.
+static bool gYawProject = true;
+
+static void projectOutYaw(const float in[3], float out[3]) {
+  const float* gB = gActiveGB;
+  const float n2 = dot3(gB, gB);
+  if (!gYawProject || n2 < 1e-12f) {
+    out[0] = in[0]; out[1] = in[1]; out[2] = in[2];
+    return;
+  }
+  const float k = dot3(in, gB) / n2;
+  out[0] = in[0] - k * gB[0];
+  out[1] = in[1] - k * gB[1];
+  out[2] = in[2] - k * gB[2];
+}
+
 void commandWheels(const float rho[3]) {
   // x = [phi(3); om(3); rho(3)] -- full state, all nine columns of each
   // wheel's Kp row now contribute.
+  // phi and om are yaw-projected before Kp (see projectOutYaw above);
+  // telemetry still reports the unprojected values.
+  float phiUsed[3], omUsed[3];
+  projectOutYaw(phi, phiUsed);
+  projectOutYaw(w_b, omUsed);
   const float xVec[9] = {
-    phi[0], phi[1], phi[2],
-    w_b[0], w_b[1], w_b[2],
+    phiUsed[0], phiUsed[1], phiUsed[2],
+    omUsed[0], omUsed[1], omUsed[2],
     rho[0], rho[1], rho[2],
   };
 
@@ -616,6 +779,72 @@ void handleSerialCommands() {
       gPhiOffset[0] = gPhiOffset[1] = gPhiOffset[2] = 0.0f;
       Serial.println("# gPhiOffset cleared to 0,0,0");
     }
+  } else if (cmd == 'y') {
+    gYawProject = (val != 0.0f);
+    Serial.print("# gYawProject = ");
+    Serial.println(gYawProject ? "TRUE (phi and om projected onto the plane perp to gB)"
+                                : "FALSE (raw phi/om into Kp -- yaw leaks ~10% of a row here)");
+  } else if (cmd == 'o') {
+    // o            -- report the current offset
+    // oc           -- CAPTURE: make corrected phi read ~0 right now
+    // oz           -- zero it
+    // o<x> <y> <z> -- set gPhiOffset explicitly, in DEGREES (comma or space
+    //                 separated). NOTE this file stores the offset with the
+    //                 '-' convention (phi = raw - gPhiOffset), so an explicit
+    //                 set is in THAT frame; oc/oz/report mean the same thing
+    //                 in every stage regardless.
+    String arg = line.substring(1);
+    arg.trim();
+    if (arg.length() == 0) {
+      printPhiOffset("# offset = ");
+    } else if (arg.charAt(0) == 'c') {
+      gPhiOffset[0] += phi[0];
+      gPhiOffset[1] += phi[1];
+      gPhiOffset[2] += phi[2];
+      applyOffsetGuards();
+      printPhiOffset("# offset CAPTURED from current attitude = ");
+      Serial.println("# hold the cube where it actually balances before capturing");
+    } else if (arg.charAt(0) == 'z') {
+      gPhiOffset[0] = gPhiOffset[1] = gPhiOffset[2] = 0.0f;
+      printPhiOffset("# offset ZEROED = ");
+    } else {
+      arg.replace(',', ' ');
+      float v[3] = { 0.0f, 0.0f, 0.0f };
+      int n = 0, from = 0;
+      while (n < 3 && from < (int)arg.length()) {
+        while (from < (int)arg.length() && arg.charAt(from) == ' ') { from++; }
+        if (from >= (int)arg.length()) { break; }
+        int to = arg.indexOf(' ', from);
+        if (to < 0) { to = arg.length(); }
+        v[n++] = arg.substring(from, to).toFloat() * (float)DEG_TO_RAD;
+        from = to;
+      }
+      if (n != 3) {
+        Serial.println("# need 3 values in deg, e.g. o0.42 -0.15 0.08  (or oc / oz)");
+      } else {
+        gPhiOffset[0] = v[0]; gPhiOffset[1] = v[1]; gPhiOffset[2] = v[2];
+        applyOffsetGuards();
+        printPhiOffset("# offset = ");
+      }
+    }
+  } else if (cmd == 'b') {
+    // Re-run the gyro bias calibration ON DEMAND. The boot run only captures
+    // the bias at that instant; it drifts thermally, and the component ALONG
+    // GRAVITY is invisible to the complementary filter (its innovation
+    // e = ghat x ga has no component along ghat), so nothing downstream can
+    // ever remove it. A fresh static calibration is the only thing that can.
+    // Measured on this rig: 6.2 dps residual, 6.16 of it gravity-aligned.
+    gArmed = false;
+    Serial.println("# Re-calibrating gyro bias -- hold the cube PERFECTLY STILL (~2 s)");
+    calibrateGyroBias((val > 0.0f) ? (uint16_t)val : 1000);
+    // bhat was estimated against the OLD bias; keeping it double-corrects.
+    bhat[0] = bhat[1] = bhat[2] = 0.0f;
+    Serial.print("# gyro bias (body, rad/s): ");
+    Serial.print(gGyroBiasBody[0], 6); Serial.print('	');
+    Serial.print(gGyroBiasBody[1], 6); Serial.print('	');
+    Serial.println(gGyroBiasBody[2], 6);
+    Serial.println("# om_* should now read ~0 while static. If it does not,");
+    Serial.println("#   the cube moved during the 2 s window -- redo it.");
   } else if (cmd == 'h') {
     gHalted = (val != 0.0f);
     if (gHalted && gArmed) {
@@ -641,11 +870,17 @@ void setup() {
   while (!Serial) {}
   Serial.println("started - CORNER STAGE 4: FULL LAW (cube held by hand)");
 
-  const uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
+  // RETRY, don't spin on a stale value: errorCode used to be `const` and was
+  // evaluated once, so a failed CAN init became an un-exitable loop that
+  // printed forever and never re-attempted -- setup() never finished and the
+  // serial command handler in loop() was therefore never reached.
+  uint32_t errorCode = ACAN_T4::can3.beginFD(canSettings);
   while (errorCode != 0) {
     Serial.print("CAN error 0x");
-    Serial.println(errorCode, HEX);
+    Serial.print(errorCode, HEX);
+    Serial.println(" -- retrying in 1 s (check CAN3 wiring / termination)");
     delay(1000);
+    errorCode = ACAN_T4::can3.beginFD(canSettings);
   }
 
   moteusX.SetStop();
