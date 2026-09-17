@@ -3,8 +3,8 @@
 Staged Arduino IDE firmware for bringing the cube up to closed-loop corner
 balance, all three wheels live at once, same staged shape as
 [`edge-bringup`](../edge-bringup/README.md) and the panel's
-`2D model/panel-bringup/Stage0-5` before it — see
-[`Firmware Lessons — 2D Panel to 3D Cube.md`](../../../Firmware%20Lessons%20—%202D%20Panel%20to%203D%20Cube.md)
+`firmware/panel-bringup/Stage0-5` before it — see
+[`Firmware Lessons — 2D Panel to 3D Cube.md`](../../docs/Firmware-Lessons-2D-Panel-to-3D-Cube.md)
 §7 for why that progression is worth repeating "nearly unchanged" rather
 than jumping straight to a closed loop.
 
@@ -59,8 +59,8 @@ coupled matrix by masking the STATE instead of the GAIN.
 
 ## `cubli_gains.h` and the attitude doc are now real files
 
-Both [`../cubli_gains.h`](../cubli_gains.h) and
-[`../Attitude representation for the firmware.md`](../Attitude%20representation%20for%20the%20firmware.md)
+Both [`../cubli_gains.h`](../cubli-ui/teensy/cubli_gains.h) and
+[`../Attitude representation for the firmware.md`](../../docs/dynamics/Attitude-Representation-for-Firmware.md)
 are checked into the repo as of this folder — previously they were only
 referenced by name in edge-bringup's comments. `cubli_gains.h` is the
 single source of truth every stage file's literal `kCorners`/`kCandidates`

@@ -13,7 +13,7 @@ tags:
 
 # Corner Rate-Filter & Edge Hardware Tests — 2026-08-19
 
-Six hardware captures processed from `firmware/3D model/Gam/FINAL/telemetry/serial/`:
+Six hardware captures processed from `data/corner/` and `data/edge/`:
 four corner-balance runs (comparing `Stage4_AutoTrim.ino` against
 `Stage4_AutoTrim_RateFilter.ino` — see
 [`../dynamics/Cube-Performance-Envelope-Results.md`](../dynamics/Cube-Performance-Envelope-Results.md)
@@ -46,7 +46,7 @@ question.
 
 ## 1. Corner quiet hold — autotrim vs rate filter
 
-![Tilt magnitude, autotrim vs rate filter](img/2026-08-19-corner-edge/corner_quiet_phi.png)
+![Tilt magnitude, autotrim vs rate filter](../../figures/hardware/2026-08-19-corner-edge/corner_quiet_phi.png)
 
 | | autotrim | rate filter |
 |---|---|---|
@@ -77,7 +77,7 @@ both the rate filter *and* a faster trim-adaptation gain (`k_a`: 2.922e-6 →
 1e-4, i.e. ~60s → ~10s time constant) in the same build. Look at standing
 wheel speed over time, not just its RMS:
 
-![Standing wheel speed over time](img/2026-08-19-corner-edge/corner_quiet_wheel_effort.png)
+![Standing wheel speed over time](../../figures/hardware/2026-08-19-corner-edge/corner_quiet_wheel_effort.png)
 
 Both climb together for the first ~30s (trim still walking in from its
 seed), but only the rate-filter run visibly turns over and *decays* — from
@@ -103,7 +103,7 @@ session.
 
 ## 2. What the rate filter actually attenuates
 
-![Raw vs filtered body rate, same run](img/2026-08-19-corner-edge/corner_quiet_om_filter_effect.png)
+![Raw vs filtered body rate, same run](../../figures/hardware/2026-08-19-corner-edge/corner_quiet_om_filter_effect.png)
 
 Within the lpf run alone (a clean comparison — same session, same
 samples, only the filter differs), `|ω|` RMS drops from 18.6°/s raw to
@@ -112,7 +112,7 @@ samples, only the filter differs), `|ω|` RMS drops from 18.6°/s raw to
 But RMS-over-everything hides where the energy actually is. The PSD tells
 a sharper story:
 
-![PSD raw vs filtered, ~30 Hz mode](img/2026-08-19-corner-edge/corner_quiet_psd.png)
+![PSD raw vs filtered, ~30 Hz mode](../../figures/hardware/2026-08-19-corner-edge/corner_quiet_psd.png)
 
 There's a real, sharp mode at **~29.7–30.5 Hz** (all three axes agree, via
 Welch PSD, `nperseg=1024` @ ~125 Hz effective sample rate) — this is very
@@ -156,7 +156,7 @@ one constant.
 
 ## 3. Pushes — how hard until it falls
 
-![Push sequence to failure, autotrim vs rate filter](img/2026-08-19-corner-edge/corner_pushes_timeline.png)
+![Push sequence to failure, autotrim vs rate filter](../../figures/hardware/2026-08-19-corner-edge/corner_pushes_timeline.png)
 
 Neither test measured push force directly (no load cell) — what's
 measurable is the outcome: peak tilt reached, whether the controller
@@ -182,7 +182,7 @@ the other.**
 Where a difference does show up is in the shape of a matched-size
 recovery:
 
-![Comparable single push, time-aligned](img/2026-08-19-corner-edge/corner_pushes_zoom.png)
+![Comparable single push, time-aligned](../../figures/hardware/2026-08-19-corner-edge/corner_pushes_zoom.png)
 
 A ~3° push (autotrim 3.34°, rate filter 2.94° — closest matched pair,
 picked so neither is contaminated by the following push) shows the
@@ -200,7 +200,7 @@ present.
 
 ## 4. Edge — 1 min quiet hold
 
-![Edge quiet hold, 197s](img/2026-08-19-corner-edge/edge_quiet_phi.png)
+![Edge quiet hold, 197s](../../figures/hardware/2026-08-19-corner-edge/edge_quiet_phi.png)
 
 RMS 0.58° over the full 196.96s armed window — but **this run wasn't
 actually undisturbed**: there's a clear excursion to ~3.5° tilt between
@@ -215,7 +215,7 @@ noise around 0°, similar in character to the corner runs above.
 
 ## 5. Edge — recovery from 6°
 
-![Edge recovery from 6 degrees](img/2026-08-19-corner-edge/edge_recovery_6deg.png)
+![Edge recovery from 6 degrees](../../figures/hardware/2026-08-19-corner-edge/edge_recovery_6deg.png)
 
 Released from -6.18°, this is **not** a fast, clean recovery — it's a
 lightly-damped ring-down:

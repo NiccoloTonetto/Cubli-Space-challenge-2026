@@ -79,7 +79,7 @@ PSD floor; `Q_om` (process noise) swept and set to match the shipped filter's
 overall RMS exactly (3.00°/s both), so the comparison is at equal aggressiveness,
 not just "which one smooths harder."
 
-![PSD comparison — raw, shipped filter, kinematic KF](img/2026-08-19-corner-edge/kf_demo_psd_comparison.png)
+![PSD comparison — raw, shipped filter, kinematic KF](../../figures/hardware/2026-08-19-corner-edge/kf_demo_psd_comparison.png)
 
 | | raw | 1st-order LPF (20 Hz) | kinematic KF (matched RMS) |
 |---|---|---|---|

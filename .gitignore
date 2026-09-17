@@ -1,15 +1,38 @@
+# --- OS / editor ---
 .DS_Store
+Thumbs.db
+*.swp
+
+# --- MATLAB / Simulink ---
+# .slxc is the Simulink build cache, .asv/.autosave are editor autosaves,
+# .original is Simulink's pre-edit backup, slprj/ is the project build dir.
 *.slxc
+*.asv
 *.autosave
 *.original
+slprj/
+codegen/
 
-# Python bytecode cache -- platform/version-specific, no value in git.
+# --- Python ---
 __pycache__/
 *.pyc
+.venv/
+venv/
 
-# Arduino IDE auto-installs libraries into whatever it thinks the
-# sketchbook ("directories.user" in arduino-cli.yaml) is. If that setting
-# ever points at this repo again, this stops the resulting vendor copies
-# from landing in git -- libraries belong in ~/Documents/Arduino/libraries,
-# installed once per machine, not in version control.
-/libraries/
+# --- Arduino / PlatformIO ---
+build/
+.pio/
+*.hex
+*.elf
+
+# --- KiCad ---
+# .kicad_prl is per-user editor state, not design data.
+*.kicad_prl
+*-backups/
+fp-info-cache
+*.bak
+
+# --- Telemetry ---
+# Raw captures land here during a session. Only curated runs are committed,
+# under data/ -- see data/README.md.
+firmware/**/telemetry/

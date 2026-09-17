@@ -10,7 +10,7 @@
 //
 // ---------------------------- WHAT AND WHY ---------------------------------
 // hw-run-analysis.md (373.5 s continuous corner balance, auto-trim on,
-// "fucking_perfect.log") found a real problem the sim envelope didn't
+// "corner-balance-373s-2026-08-20.log") found a real problem the sim envelope didn't
 // predict: torque saturated 71.8% of the time, and the rate term (K2*om)
 // alone demanded 1.5x the available torque (0.180 N*m rms against a
 // 0.12 N*m clamp) -- NOT because the cube was fighting a real disturbance
