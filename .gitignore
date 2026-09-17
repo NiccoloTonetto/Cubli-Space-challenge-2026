@@ -36,3 +36,10 @@ fp-info-cache
 # Raw captures land here during a session. Only curated runs are committed,
 # under data/ -- see data/README.md.
 firmware/**/telemetry/
+
+# --- Arduino sketchbook libraries ---
+# The Arduino IDE installs vendor libraries into whatever it thinks the
+# sketchbook is. If that ever points at this repo, this stops the resulting
+# copies -- or local symlinks -- from landing in git. Libraries belong in
+# ~/Documents/Arduino/libraries, installed once per machine.
+/libraries/
