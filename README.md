@@ -199,5 +199,5 @@ and Muehlebach & D'Andrea (IEEE TCST 2017).
 ## License
 
 Original work in this repository is MIT licensed — see [LICENSE](LICENSE).
-Third-party vendor libraries under [`hardware/kicad/libraries/`](hardware/kicad/libraries/)
-keep their own licenses.
+Third-party vendor libraries, JavaScript and fonts keep their own licenses —
+see [NOTICE](NOTICE).

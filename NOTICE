@@ -1,0 +1,33 @@
+# Third-party material
+
+The MIT license in LICENSE covers the original work in this repository:
+documentation, MATLAB/Simulink models, firmware and hardware design files.
+
+It does NOT cover the following, each of which remains under its own license
+from its respective owner:
+
+## Vendor KiCad libraries — hardware/kicad/libraries/
+
+Symbols, footprints and 3D models for third-party parts:
+
+  * JST           B3B-PH-K-S, S3B-PH-K-S
+  * Bosch         BMI270
+  * Texas Instr.  LM2596
+  * PJRC          Teensy 4.1
+  * mjbots        moteus-n1
+  * AMASS         XT90PW-M
+
+## Vendor JavaScript — firmware/cubli-ui/dashboard/static/vendor/
+
+  * Chart.js      MIT
+  * Tailwind CSS  MIT
+  * three.js      MIT
+
+## Fonts
+
+  * Montserrat    SIL Open Font License 1.1
+
+## Referenced literature
+
+The papers cited in docs/references/README.md are not redistributed here.
+Fetch them from the publisher via the DOIs given there.

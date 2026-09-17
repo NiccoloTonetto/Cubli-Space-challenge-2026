@@ -19,15 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-This license covers the original work in this repository: documentation,
-MATLAB/Simulink models, firmware and hardware design files.
-
-It does NOT cover third-party material redistributed here:
-  * hardware/kicad/libraries/  -- vendor symbols, footprints and 3D models
-    (JST, Bosch, Texas Instruments, PJRC/Teensy, mjbots, AMASS and others),
-    each under its own license from its respective vendor.
-  * firmware/cubli-ui/dashboard/static/vendor/  -- Chart.js, Tailwind CSS and
-    three.js, each under its own license.
