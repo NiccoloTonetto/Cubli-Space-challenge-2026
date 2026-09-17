@@ -20,7 +20,9 @@ __pycache__/
 venv/
 
 # --- Arduino / PlatformIO ---
-build/
+# Scoped to firmware/ on purpose: a bare "build/" would also swallow
+# figures/build/, which holds photographs of the physical build.
+firmware/**/build/
 .pio/
 *.hex
 *.elf
