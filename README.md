@@ -4,10 +4,17 @@ A 156 mm reaction-wheel cube that balances on an **edge** and on a **corner**,
 taken from Lagrangian derivation through Simscape multibody simulation to
 working hardware — and validated against its own flight telemetry.
 
+![The cube balancing unsupported on one corner](figures/build/cubli-corner-balance.jpg)
+
+*Standing on a single corner, unsupported. Three reaction wheels, a Teensy 4.1
+closing a 400 Hz loop, and a gain set designed for this specific corner.*
+
+And the telemetry underneath it — six minutes of exactly that, without falling:
+
 ![373 s of continuous corner balance](figures/simulation/png/hw_run_overview.png)
 
-*373 seconds of continuous corner balance. Tilt RMS 0.40°, peak 1.25°, wheels
-never reaching the 40 rad/s policy cap. Raw log:
+*373 s continuous. Tilt RMS 0.40°, peak 1.25°, wheels never reaching the
+40 rad/s policy cap. Raw log:
 [`data/corner/corner-balance-373s-2026-08-20.log`](data/corner/corner-balance-373s-2026-08-20.log).*
 
 ---

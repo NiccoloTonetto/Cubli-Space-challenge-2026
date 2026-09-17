@@ -5,6 +5,12 @@ PDF (vector, for reports) and PNG (raster, so they render inline on GitHub).
 Regenerate the whole simulation set with
 [`cubli_figures.m`](../simulation/cube-3d/export/cubli_figures.m).
 
+## `build/` — the physical cube
+
+| File | What it shows |
+|---|---|
+| [`cubli-corner-balance.jpg`](build/cubli-corner-balance.jpg) | The cube balancing unsupported on a single corner. Printed frame, three ballasted reaction wheels, moteus drivers and the Teensy stack visible inside, battery top-centre. This is the README hero. |
+
 ## `simulation/` — the design study
 
 | Figure | What it shows |
